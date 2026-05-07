@@ -31,6 +31,15 @@ export interface Message {
    * LLM API (which only consumes content + toolCalls).
    */
   blocks?: MessageBlock[];
+  /**
+   * Set on assistant messages whose stream errored (network failure, HTTP
+   * 4xx/5xx). The `content` field carries the human-readable error so the
+   * UI can render it inline, but these messages MUST be excluded from the
+   * slice sent back to the LLM — DeepSeek V4 / Claude / Qwen3 thinking
+   * models reject any assistant turn that lacks reasoning_content, and
+   * fetch-failed turns never produced any.
+   */
+  errored?: boolean;
   createdAt: string;           // ISO timestamp
 }
 
@@ -46,12 +55,34 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+/**
+ * JSON-Schema-shaped tool parameter property. Permissive on purpose — Anthropic
+ * / OpenAI / Ollama all accept the full JSON Schema vocabulary; we don't want
+ * to gate ourselves to scalar-only properties (rejects array `items` + nested
+ * object `properties`). Keep `type / description / enum` named so common
+ * scalar uses keep a tight type, and allow the rest via the index signature.
+ */
+export interface ToolParamSchema {
+  type: string;
+  description?: string;
+  enum?: unknown[];
+  /** Array element schema (when type === 'array'). */
+  items?: ToolParamSchema;
+  /** Nested object schema (when type === 'object'). */
+  properties?: Record<string, ToolParamSchema>;
+  /** Nested object required props. */
+  required?: string[];
+  // Allow other JSON Schema keywords (minimum, maximum, pattern, ...) without
+  // forcing every consumer to update the type when a new one is introduced.
+  [k: string]: unknown;
+}
+
 export interface ToolDefinition {
   name: string;
   description: string;
   parameters: {
     type: 'object';
-    properties: Record<string, { type: string; description?: string; enum?: unknown[] }>;
+    properties: Record<string, ToolParamSchema>;
     required?: string[];
   };
 }

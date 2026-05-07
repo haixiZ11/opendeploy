@@ -68,17 +68,23 @@ Python 插件是 OpenDeploy 的**主力支持方向**。
 
 | ✅ Python 插件能搞 | ❌ Python 插件搞不定 |
 |---|---|
-| 保存前校验业务规则 | 审核 / 反审核服务端拦截(操作插件,v0.2) |
-| 字段变化时自动填充 / 计算 | 下推单据字段映射(转换插件,v0.2) |
-| 按钮点击触发自定义动作 | 跨单据数据聚合报表(需另建报表) |
-| 金额 / 数量自动汇总 | 高频大数据处理(性能不够) |
-| 客户 / 物料信息联动携带 | 复杂线程 / 并发逻辑(IronPython 限制) |
+| 保存前校验业务规则 | 跨单据数据聚合报表(需另建报表) |
+| 字段变化时自动填充 / 计算 | 高频大数据处理(性能不够) |
+| 按钮点击触发自定义动作 | 复杂线程 / 并发逻辑(IronPython 限制) |
+| 金额 / 数量自动汇总 | 第三方 NuGet 包依赖 / 复杂 .NET 类型 |
+| 客户 / 物料信息联动携带 | 套打 widget 定制(K/3 套打用 widget 框架,不是 PlugIn) |
+| **下推时字段映射 / 关联干预**(`kingdee_add_convert_plugin` 注册 Python 转换插件)| |
+| **审核 / 反审核 / 删除拦截**(`PythonOperationServicePlugIn`,产品工具暂未覆盖,Python 路径机制存在,2026-04-30 反编译实证)| |
+
+**关于 `kingdee_add_convert_field_mapping` 的事实**:K/3 标准转换规则只支持 **1 主关联实体**(头→头 + 1 个 sourceEntry→targetEntry)。其他 entry 携带(包括跨自建 entry / 子单据体↔单据体)不在这个工具的能力范围,需要用 `kingdee_add_convert_plugin` 注册 `PythonConvertPlugIn`,在 `OnAfterCreateLink` 事件里手动塞数据 + 创建关联数据包(`FlowId` / `FlowLineId` / `RuleId` / `STableName` / `SBillId` / `SId` 6 个字段)。完整骨架见 `bos-features-index/references/multi-entry-convert-via-plugin`。
+
+工具内部已对入参做 entry 一致性校验,跨 entry 调用会被 reject 并返回 hint。但 agent 应当在出方案前自己判断"这条字段映射跨不跨 entry",及早走对路径,而不是依赖工具兜底。
 
 **到这一层的行动顺序**:
 1. 先用 `kingdee_list_extensions` 查父单据有没有现成扩展可复用
 2. 参考 `k3cloud/python-plugin-index` skill 生成 `pyBody`
 3. **出 design,等用户签字**(base-system 硬规则一)
-4. 调 `kingdee_register_python_plugin`(挂到已有扩展)**或** `kingdee_create_extension_with_python_plugin`(新建扩展 + 挂插件)
+4. 调 `kingdee_register_python_plugins`(挂到已有扩展;数组,一次保存)
 5. **反查验证**(base-system 硬规则四 + erp-rules/k3cloud.md 写入闭环)
 6. 告知用户:`backupFile` 路径 + BOS Designer F5 刷新 + 客户端重登 + SVN 同步(如适用)
 

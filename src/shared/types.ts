@@ -1,11 +1,6 @@
 /// <reference types="node" />
 
-import type {
-  ErpConnectionState,
-  K3CloudDiscoveryConfig,
-  ListDatabasesResult,
-  Project
-} from './erp-types';
+import type { ErpConnectionState, Project } from './erp-types';
 import type { PluginFile, PluginWriteResult } from './plugin-types';
 import type { KnowledgeSource, LoadedSkill, SkillMeta } from './skill-types';
 import type { MessageBlock } from './blocks';
@@ -32,13 +27,24 @@ export interface AppSettings {
   projects?: Project[];
   /** Id of the project whose connection pool drives agent metadata queries. */
   activeProjectId?: string;
+  /**
+   * Plan 5.13 — write each LLM turn's full request body + SSE chunks to
+   * `logs/raw-llm/<convId>/turn-NNN.{req,res}.{json,txt}` for postmortem.
+   * Defaults to `true` (single-machine community edition: business data
+   * never leaves the user's box, so dumping is fine and helps diagnosis).
+   * Enterprise edition (MVP-3+) flips this default to false and adds
+   * redact / audit layers. Authorization headers are always redacted to
+   * `***` regardless — defense against screen-share / issue-paste leaks.
+   */
+  llmRawDump?: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   language: 'zh-CN',
   theme: 'system',
   knowledgeSources: [],
-  projects: []
+  projects: [],
+  llmRawDump: true
 };
 
 export interface LlmChatRequest {
@@ -129,7 +135,14 @@ export interface IpcApi {
   ) => Promise<Project>;
   projectsDelete: (id: string) => Promise<void>;
   projectsSetActive: (id: string | null) => Promise<void>;
-  projectsListDatabases: (config: K3CloudDiscoveryConfig) => Promise<ListDatabasesResult>;
+  /**
+   * Pre-login data-center discovery — given only a K/3 Cloud server URL,
+   * fetch the list of account-sets the server hosts. Mirrors BOS Designer's
+   * flow (URL → pick account-set → credentials). No auth required.
+   */
+  projectsListDataCenters: (
+    baseUrl: string
+  ) => Promise<Array<{ id: string; number: string; name: string }>>;
   projectsConnectionState: () => Promise<ErpConnectionState>;
   /** Subscribe to live connection-state changes. Returns an unsubscribe fn. */
   erpOnConnectionState: (cb: (s: ErpConnectionState) => void) => () => void;

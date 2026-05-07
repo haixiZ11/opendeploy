@@ -149,19 +149,24 @@ describe('runAgentLoop', () => {
     expect(maxInFlight).toBe(1);
   });
 
-  it('halts after max iterations', async () => {
+  it('halts after max iterations with a soft cap message instead of throwing', async () => {
+    // Iteration cap is a soft signal — the loop appends a synthetic assistant
+    // message ("回复继续我接着干完") and returns normally. Throwing would
+    // surface a red error in the chat and lose the user's progress.
     const client = fakeClient([
       [{ type: 'tool_call', toolCall: { id: 't', name: 'nope', arguments: {} } }, { type: 'done', finishReason: 'tool_calls' }],
       [{ type: 'tool_call', toolCall: { id: 't', name: 'nope', arguments: {} } }, { type: 'done', finishReason: 'tool_calls' }],
       [{ type: 'tool_call', toolCall: { id: 't', name: 'nope', arguments: {} } }, { type: 'done', finishReason: 'tool_calls' }]
     ]);
-    await expect(
-      runAgentLoop({
-        client, tools: new ToolRegistry(), providerId: 't', apiKey: 'k',
-        initialMessages: [{ id: 'u', role: 'user', content: 'go', createdAt: '' }],
-        maxIterations: 2
-      })
-    ).rejects.toThrow(/max iterations/i);
+    const result = await runAgentLoop({
+      client, tools: new ToolRegistry(), providerId: 't', apiKey: 'k',
+      initialMessages: [{ id: 'u', role: 'user', content: 'go', createdAt: '' }],
+      maxIterations: 2
+    });
+    const last = result[result.length - 1];
+    expect(last.role).toBe('assistant');
+    expect(last.content).toMatch(/已运行 2 轮/);
+    expect(last.content).toMatch(/继续/);
   });
 
   it('accumulates reasoning_delta into assistant message.reasoningContent and emits events', async () => {
@@ -275,5 +280,176 @@ describe('runAgentLoop error logging', () => {
       exists = false;
     }
     expect(exists).toBe(false);
+  });
+});
+
+describe('runAgentLoop trace (Plan 5.13)', () => {
+  let tmp: string;
+  let prevHome: string | undefined;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'opendeploy-loop-trace-'));
+    prevHome = process.env.OPENDEPLOY_HOME;
+    process.env.OPENDEPLOY_HOME = tmp;
+  });
+
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.OPENDEPLOY_HOME;
+    else process.env.OPENDEPLOY_HOME = prevHome;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function tracePath(): string {
+    const ymd = new Date().toISOString().slice(0, 10);
+    return join(tmp, 'logs', `agent-trace.${ymd}.log`);
+  }
+
+  it('writes one JSON line per turn with usage + finish reason + elapsed', async () => {
+    const client = fakeClient([[
+      { type: 'delta', content: 'hi' },
+      { type: 'usage', outputTokens: 42 },
+      { type: 'done', finishReason: 'stop' }
+    ]]);
+    await runAgentLoop({
+      client,
+      tools: new ToolRegistry(),
+      initialMessages: [{ id: 'u', role: 'user', content: 'hi', createdAt: '' }],
+      providerId: 'deepseek',
+      model: 'deepseek-v4',
+      conversationId: 'c-test-1',
+      apiKey: 'k'
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const lines = readFileSync(tracePath(), 'utf-8').trim().split('\n');
+    expect(lines).toHaveLength(1);
+    const rec = JSON.parse(lines[0]);
+    expect(rec.ns).toBe('agent-loop');
+    expect(rec.conversationId).toBe('c-test-1');
+    expect(rec.iteration).toBe(0);
+    expect(rec.providerId).toBe('deepseek');
+    expect(rec.model).toBe('deepseek-v4');
+    expect(rec.outputTokens).toBe(42);
+    expect(rec.finishReason).toBe('stop');
+    expect(rec.errored).toBe(false);
+    expect(typeof rec.llmElapsedMs).toBe('number');
+    expect(typeof rec.totalElapsedMs).toBe('number');
+    expect(rec.toolCalls).toEqual([]);
+  });
+
+  it('records each tool call with name + duration + ok flag + parallelSafe', async () => {
+    const registry = new ToolRegistry();
+    registry.register({
+      definition: {
+        name: 'echo_safe',
+        description: '',
+        parameters: { type: 'object', properties: {} }
+      },
+      parallelSafe: true,
+      async execute() { return 'ok-1'; }
+    });
+    registry.register({
+      definition: {
+        name: 'echo_unsafe',
+        description: '',
+        parameters: { type: 'object', properties: {} }
+      },
+      async execute() { return 'ok-2'; }
+    });
+
+    const client = fakeClient([
+      [
+        { type: 'tool_call', toolCall: { id: 't1', name: 'echo_safe', arguments: {} } },
+        { type: 'tool_call', toolCall: { id: 't2', name: 'echo_unsafe', arguments: {} } },
+        { type: 'done', finishReason: 'tool_calls' }
+      ],
+      [
+        { type: 'delta', content: 'done' },
+        { type: 'done', finishReason: 'stop' }
+      ]
+    ]);
+    await runAgentLoop({
+      client, tools: registry, providerId: 'test', apiKey: 'k',
+      conversationId: 'c-tools',
+      initialMessages: [{ id: 'u', role: 'user', content: 'go', createdAt: '' }]
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const lines = readFileSync(tracePath(), 'utf-8').trim().split('\n');
+    expect(lines).toHaveLength(2); // turn 0 (tool calls) + turn 1 (final)
+    const turn0 = JSON.parse(lines[0]);
+    expect(turn0.iteration).toBe(0);
+    expect(turn0.toolCalls).toHaveLength(2);
+    expect(turn0.toolCalls[0].name).toBe('echo_safe');
+    expect(turn0.toolCalls[0].ok).toBe(true);
+    expect(turn0.toolCalls[0].parallelSafe).toBe(true);
+    expect(turn0.toolCalls[1].name).toBe('echo_unsafe');
+    expect(turn0.toolCalls[1].parallelSafe).toBe(false);
+    expect(typeof turn0.toolCalls[0].durationMs).toBe('number');
+
+    const turn1 = JSON.parse(lines[1]);
+    expect(turn1.iteration).toBe(1);
+    expect(turn1.toolCalls).toEqual([]);
+  });
+
+  it('passes per-turn rawCapture into client.stream when factory provided', async () => {
+    const captures: Array<{ turn: number; gotRequest: boolean; gotChunkCount: number; closed: boolean }> = [];
+    const factory = (turn: number) => {
+      const rec = { turn, gotRequest: false, gotChunkCount: 0, closed: false };
+      captures.push(rec);
+      return {
+        onRequest() { rec.gotRequest = true; },
+        onChunk() { rec.gotChunkCount++; },
+        async onClose() { rec.closed = true; }
+      };
+    };
+
+    // Custom client that exercises the rawCapture argument so we don't depend
+    // on real openai-client wiring here — the per-client integration is covered
+    // by tests/llm/openai-client.test.ts etc.
+    const client = {
+      async *stream(_req: unknown, opts: { rawCapture?: { onRequest: Function; onChunk: Function; onClose: () => Promise<void> } }) {
+        opts.rawCapture?.onRequest({ body: 'fake' }, { Authorization: 'sk' });
+        opts.rawCapture?.onChunk('chunk-1');
+        opts.rawCapture?.onChunk('chunk-2');
+        yield { type: 'delta', content: 'hi' } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+        await opts.rawCapture?.onClose();
+      }
+    } as unknown as import('../../src/main/llm/types').LlmClient;
+
+    await runAgentLoop({
+      client,
+      tools: new ToolRegistry(),
+      initialMessages: [{ id: 'u', role: 'user', content: 'hi', createdAt: '' }],
+      providerId: 'test',
+      apiKey: 'k',
+      conversationId: 'c-raw',
+      rawCaptureFactory: factory
+    });
+
+    expect(captures).toHaveLength(1);
+    expect(captures[0].turn).toBe(0);
+    expect(captures[0].gotRequest).toBe(true);
+    expect(captures[0].gotChunkCount).toBe(2);
+    expect(captures[0].closed).toBe(true);
+  });
+
+  it('records errored=true + errorMessage when LLM stream errors', async () => {
+    const client = fakeClient([[
+      { type: 'error', error: 'HTTP 500: oops' }
+    ]]);
+    await runAgentLoop({
+      client,
+      tools: new ToolRegistry(),
+      initialMessages: [{ id: 'u', role: 'user', content: 'hi', createdAt: '' }],
+      providerId: 'test',
+      apiKey: 'k',
+      conversationId: 'c-err'
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const lines = readFileSync(tracePath(), 'utf-8').trim().split('\n');
+    expect(lines).toHaveLength(1);
+    const rec = JSON.parse(lines[0]);
+    expect(rec.errored).toBe(true);
+    expect(rec.errorMessage).toContain('HTTP 500');
   });
 });

@@ -22,18 +22,13 @@
     "knowledge:manifest": "node --experimental-strip-types scripts/gen-knowledge-manifest.ts",
     "k3cloud:discover": "node --experimental-strip-types scripts/discover-k3cloud-schema.ts",
     "agent:chat": "tsx --tsconfig tsconfig.node.json scripts/agent-chat.ts",
-    "recon:snapshot-before": "tsx --tsconfig tsconfig.node.json scripts/bos-recon/cli.ts snapshot-before",
-    "recon:xe-start": "tsx --tsconfig tsconfig.node.json scripts/bos-recon/cli.ts xe-start",
-    "recon:xe-stop": "tsx --tsconfig tsconfig.node.json scripts/bos-recon/cli.ts xe-stop",
-    "recon:snapshot-after": "tsx --tsconfig tsconfig.node.json scripts/bos-recon/cli.ts snapshot-after",
-    "recon:diff": "tsx --tsconfig tsconfig.node.json scripts/bos-recon/cli.ts diff"
+    "bos:capture": "tsx --tsconfig tsconfig.node.json scripts/bos-recon/capture-proxy.ts"
   },
   "dependencies": {
     "eventsource-parser": "^3.0.8",
     "highlight.js": "^11.11.1",
     "i18next": "^26.0.6",
     "js-yaml": "^4.1.1",
-    "mssql": "^12.3.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-i18next": "^17.0.4",

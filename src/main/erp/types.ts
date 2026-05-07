@@ -1,7 +1,9 @@
 import type {
+  BosRpcCredentials,
+  ExtensionMeta,
   FieldMeta,
-  K3CloudConnectionConfig,
   ObjectMeta,
+  PluginMeta,
   SubsystemMeta,
   TestConnectionResult
 } from '@shared/erp-types';
@@ -13,14 +15,14 @@ import type {
  * data shapes.
  */
 export interface ErpConnector {
-  readonly config: K3CloudConnectionConfig;
+  readonly config: BosRpcCredentials;
 
-  /** Open the long-lived pool. Idempotent. */
+  /** Login + heartbeat. Idempotent — second call reuses the cached session. */
   connect(): Promise<void>;
-  /** Close the long-lived pool. Idempotent. */
+  /** Drop the cached session. Idempotent. */
   disconnect(): Promise<void>;
 
-  /** Hit the server with a trivial query to confirm connectivity + auth. */
+  /** Probe the server: login + heartbeat. Used by the project form's "Test" button. */
   testConnection(): Promise<TestConnectionResult>;
 
   // ─── Metadata queries (implemented in Task 12) ────────────────────────
@@ -35,6 +37,24 @@ export interface ErpConnector {
   listSubsystems(locale?: number): Promise<SubsystemMeta[]>;
   /** Fuzzy search across id + localized name. */
   searchMetadata(keyword: string, locale?: number): Promise<ObjectMeta[]>;
+  /**
+   * Raw `T_META_OBJECTTYPE.FKERNELXML` for `formId`, used by BOS write tools
+   * to discover layout view OIDs for the LayoutInfo delta. Returns null when
+   * the form doesn't exist.
+   */
+  getKernelXml(formId: string): Promise<string | null>;
+  /**
+   * List BOS extensions whose parent is `parentFormId`. Joins
+   * `T_META_OBJECTTYPE_E` so only genuine extensions surface, not stray rows
+   * pointing at the parent.
+   */
+  listExtensions(parentFormId: string, locale?: number): Promise<ExtensionMeta[]>;
+  /**
+   * Parse the form (or extension) FKERNELXML and return registered plugins.
+   * Distinguishes `python` (PyScript inline) from `dll` (.NET fully-qualified
+   * ClassName).
+   */
+  listFormPlugins(formOrExtId: string): Promise<PluginMeta[]>;
 }
 
 export interface ListObjectsOptions {

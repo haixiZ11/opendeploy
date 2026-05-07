@@ -3,18 +3,24 @@ import type { LlmChatRequest } from '@shared/types';
 import { createLlmClient } from './llm/factory';
 import { runAgentLoop } from './agent/loop';
 import { createLogger } from './logger';
+import { loadSettings } from './settings';
+import {
+  createFileRawCapture,
+  pruneOldRawConvs,
+  DEFAULT_RAW_KEEP_N
+} from './llm/raw-dump';
 
 const logger = createLogger('ipc-llm');
 import { ToolRegistry } from './agent/tools';
 import { BUILTIN_TOOLS } from './agent/builtin-tools';
 import { buildSkillsContext } from './agent/skills-integration';
 import { activeProjectTag, buildK3CloudTools } from './agent/k3cloud-tools';
+import { buildBosRpcTools } from './agent/bos-rpc-tools';
 import { erpRulesFragment } from './agent/erp-rules';
 import { getConnectionState } from './erp/active';
 import { getProject } from './projects/store';
 import { buildPluginTools } from './agent/plugin-tools';
 import { buildPlanTools } from './agent/plan-tools';
-import { buildBosWriteTools } from './agent/bos-write-tools';
 import {
   deleteConversation,
   listConversations,
@@ -108,9 +114,9 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
         registry.register(loadSkillTool);
         registry.register(loadSkillFileTool);
         for (const t of buildK3CloudTools()) registry.register(t);
+        for (const t of await buildBosRpcTools()) registry.register(t);
         for (const t of buildPluginTools()) registry.register(t);
         for (const t of buildPlanTools()) registry.register(t);
-        for (const t of buildBosWriteTools()) registry.register(t);
 
         const projectTag = activeProjectTag(activeProjectTagRaw);
         const erpRules = erpRulesFragment(activeErpProvider, { k3cloud: k3cloudRulesRaw });
@@ -124,6 +130,23 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
           .join('\n\n');
 
         const client = createLlmClient(req.providerId);
+        // conversationId for trace stitching — fall back to requestId for
+        // brand-new conversations (renderer attaches `conversationId` only
+        // on follow-up turns, but trace records still need a join key).
+        const traceConvId = req.conversationId ?? requestId;
+
+        // Plan 5.13 raw layer — gate behind `settings.llmRawDump` (default
+        // true for community edition). Build a per-turn file capture; the
+        // loop will invoke the factory once per LLM call. Always-on prune
+        // after the first turn keeps the dir size bounded without manual
+        // cleanup; the prune is fire-and-forget so it doesn't slow the turn.
+        const settings = await loadSettings();
+        const rawDumpOn = settings.llmRawDump !== false;
+        const rawCaptureFactory = rawDumpOn
+          ? (turn: number) =>
+              createFileRawCapture({ conversationId: traceConvId, turn })
+          : undefined;
+
         const finalMessages = await runAgentLoop({
           client,
           tools: registry,
@@ -132,6 +155,8 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
           apiKey: req.apiKey,
           model: req.model,
           systemPrompt,
+          conversationId: traceConvId,
+          rawCaptureFactory,
           signal: abortController.signal,
           onEvent: (e) => {
             if (e.type === 'delta') emit({ type: 'delta', content: e.content });
@@ -181,6 +206,13 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
           messages: finalMessages,
           ...(projectId ? { projectId } : {})
         });
+
+        // Bound raw-llm/ disk footprint — keep newest N conv dirs only.
+        // Fire-and-forget: a slow prune shouldn't delay the user-visible
+        // 'done' event. Errors are swallowed; the next turn will retry.
+        if (rawDumpOn) {
+          void pruneOldRawConvs(DEFAULT_RAW_KEEP_N).catch(() => undefined);
+        }
 
         emit({ type: 'done' });
       } catch (err) {

@@ -12,63 +12,35 @@
  */
 export type ErpProvider = 'k3cloud';
 
-export interface K3CloudConnectionConfig {
-  /** Hostname or IP. Loopback for local dev, FQDN / IP for customer environments. */
-  server: string;
-  /** Defaults to 1433 when omitted. Dynamic-port instances need an explicit value. */
-  port?: number;
-  /** Target account-set database — the `AIS...` one for K/3 Cloud. */
-  database: string;
-  user: string;
-  /** Stored plaintext in settings.json per project decision; Enterprise build will move to keychain. */
-  password: string;
-  /** Default `true` — SQL Server 2022+ requires encryption. */
-  encrypt?: boolean;
-  /** Default `true` for local dev; flip off when the DB has a CA-issued cert. */
-  trustServerCertificate?: boolean;
-}
-
 /**
- * Connection parameters needed to enumerate candidate account-set databases
- * on a K/3 Cloud server — i.e. everything needed to log in to `master`.
- * `database` is deliberately excluded: the discovery flow runs *before*
- * the user has picked a database.
+ * BOS RPC credentials — the only connection config a K/3 Cloud project
+ * needs. Mirrors BOS Designer's login dialog: server URL → pick account-set
+ * → username + password.
+ *
+ * The transport is HTTP(S) to the K/3 Cloud Web Server (port 80/443) using
+ * the proprietary base64+zlib + DCXML envelope. No SQL Server reachability
+ * is required — production deployments where consultants can only reach
+ * the web server work the same as local dev.
  */
-export interface K3CloudDiscoveryConfig {
-  server: string;
-  port?: number;
-  user: string;
+export interface BosRpcCredentials {
+  /** K/3 Cloud Web Server root, e.g. `http://localhost/k3cloud` (no trailing slash). */
+  baseUrl: string;
+  /** Account-set ID — 32-hex GUID, discovered via `projects:list-data-centers` (no auth needed). */
+  acctId: string;
+  /** K/3 Cloud user (the `demo` / consultant login, NOT a SQL user). */
+  username: string;
+  /** Stored plaintext per the SQL password decision; Enterprise build will move to keychain. */
   password: string;
-  encrypt?: boolean;
-  trustServerCertificate?: boolean;
-}
-
-export interface DatabaseCandidate {
-  /** `name` from `sys.databases`. */
-  name: string;
-  /** True when the name matches K/3 Cloud's `AIS*` account-set convention. */
-  isAccountSet: boolean;
-}
-
-export interface ListDatabasesResult {
-  ok: boolean;
-  /** Present on success — user-visible databases, account-sets sorted first. */
-  databases?: DatabaseCandidate[];
-  /**
-   * `@@VERSION` output from the server, e.g. "Microsoft SQL Server 2022 …".
-   * The discovery flow probes this alongside `sys.databases` so the UI can
-   * show a "connected" confirmation without a second round-trip.
-   */
-  serverVersion?: string;
-  /** Present on failure — human-readable reason. */
-  error?: string;
+  /** Developer code, e.g. `PAIJ` — stamped on extensions for ownership. Defaults to `PAIJ`. */
+  devCode: string;
 }
 
 export interface Project {
   id: string;
   name: string;
   erpProvider: ErpProvider;
-  connection: K3CloudConnectionConfig;
+  /** BOS RPC credentials — required. Drives both reads and writes. */
+  bos: BosRpcCredentials;
   /** ISO timestamps; written by the store on create / update. */
   createdAt: string;
   updatedAt: string;
@@ -95,7 +67,7 @@ export interface ErpConnectionState {
 
 export interface TestConnectionResult {
   ok: boolean;
-  /** `@@VERSION` output, e.g. "Microsoft SQL Server 2025 Express ...". Present on success. */
+  /** Server version banner — empty string on BOS-only path. Reserved for future use. */
   serverVersion?: string;
   /** Human-readable reason for failure. Populated when `ok === false`. */
   error?: string;
@@ -115,6 +87,13 @@ export interface ObjectMeta {
   modelTypeId: number | null;
   /** `FSUBSYSID` → T_META_SUBSYSTEM.FID. */
   subsystemId: string | null;
+  /**
+   * `FBASEOBJECTID` — for BOS extensions, the FormID of the parent object
+   * being extended (e.g. `'SAL_SaleOrder'`). Null for primary objects that
+   * aren't extensions. Surfaced because write tools need it to resolve the
+   * parent's layout OID when adding fields / plugins to an extension.
+   */
+  baseObjectId: string | null;
   /** Whether this is a template / base object (usually hidden from consultants). */
   isTemplate: boolean;
   /** `FMODIFYDATE`. ISO string. */
