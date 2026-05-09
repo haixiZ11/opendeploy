@@ -215,7 +215,22 @@ export function encodeApFieldRaw(s: string): string {
   return encodeAppLayer(s);
 }
 
-/** Convenience: parse a JSON response body. */
+/**
+ * Parse a decoded RPC body as JSON. On failure, surface the actual body
+ * snippet so callers (and agent tool_results) get an actionable message
+ * instead of a generic JSON.parse positional error. K/3 occasionally
+ * returns concatenated values (e.g. `null{...}`) when proxy methods
+ * declare tuple returns — the snippet immediately reveals which case.
+ */
 export function parseJsonResponse<T = unknown>(bodyText: string): T {
-  return JSON.parse(bodyText) as T;
+  try {
+    return JSON.parse(bodyText) as T;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const snippet = bodyText.length > 400 ? bodyText.slice(0, 400) + '…' : bodyText;
+    throw new Error(
+      `K/3 RPC body is not valid JSON: ${msg}. ` +
+        `bodyText (${bodyText.length} chars): ${JSON.stringify(snippet)}`,
+    );
+  }
 }
