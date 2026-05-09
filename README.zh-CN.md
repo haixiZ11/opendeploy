@@ -31,7 +31,7 @@
 
 <p align="center">
   <img src="./assets/project.gif" alt="开达创建项目" width="720" />
-  <br/><sub>创建项目 —— 接入金蝶云星空 V9</sub>
+  <br/><sub>创建项目 —— 接入 金蝶云星空 标准版/企业版 V9</sub>
 </p>
 
 <p align="center">
