@@ -45,6 +45,7 @@ import {
   indexByEnumName,
   type EnumObjectSummary,
 } from './rpc/enum-objects';
+import { unlink } from 'node:fs/promises';
 import { extractKernelXml, parseMetaDataXml } from './rpc/metadata-xml';
 import { login } from './rpc/login';
 import { getNextSequenceInt32 } from './rpc/sequence';
@@ -76,6 +77,8 @@ import { saveConvertRules } from './rpc/save-convert-rules';
 import {
   saveConvertRuleExtState,
   loadConvertRuleExtState,
+  listConvertRuleExtsByOrigin,
+  convertRuleExtStatePath,
 } from './rpc/convert-rule-state';
 import { buildPatchBaseXml } from './rpc/build-patch-base-xml';
 import { transformPatchedToExtensionWire } from './rpc/transform-extension-wire';
@@ -112,7 +115,7 @@ import {
   // extractors remain — they're parsers (read-only, no XML construction).
   extractFormAppearanceLocation,
   extractEntryEntityAppearanceLocation,
-} from './rpc/operation-overlay';
+} from './rpc/appearance-locator';
 import { getBridge } from './bridge';
 import type { KdSession } from './rpc/http-client';
 import type {
@@ -338,6 +341,24 @@ export class K3CloudConnector implements ErpConnector {
   }
 
   /**
+   * Reverse direction of `resolveLookupClassGuid`: GUID → friendly FormId.
+   * Used when pre-validating BasePropertyField.srcDisplayFieldName — we know
+   * the source BaseDataField's `<LookUpObjectID>` GUID and need to fetch the
+   * referenced base data's field list to verify the display field exists.
+   *
+   * Returns null when the GUID isn't in the lookup-class registry (rare —
+   * exotic ISV-defined classes can fall through; caller should skip
+   * validation rather than block the save).
+   */
+  async resolveLookupClassFormId(guid: string): Promise<string | null> {
+    const map = await this.listLookupObjects();
+    for (const obj of map.values()) {
+      if (obj.id === guid) return obj.formId;
+    }
+    return null;
+  }
+
+  /**
    * Lazy fetch + cache the full enum-type list (~3500 rows). Used for
    * ComboField name → GUID translation and the agent's `k3cloud_list_enum_types`
    * browse tool.
@@ -534,6 +555,29 @@ export class K3CloudConnector implements ErpConnector {
   ): Promise<ExtendConvertRuleResult> {
     const session = this.requireSession();
     const baseline = this.requireBaseline('extendConvertRule', originRuleId);
+
+    // Single-layer-tree guard — mirror the form-extension rule for convert
+    // rules. BOS server happily creates a second sibling extension under
+    // the same origin (no server-side check), but OpenDeploy enforces "1
+    // project ext per origin rule" so all customizations pile into one
+    // place. Without this users end up with duplicate "(启用)信用复核携带"
+    // siblings in BOS Designer (2026-05-09 实证).
+    if (this.projectId) {
+      const existing = await listConvertRuleExtsByOrigin(this.projectId, originRuleId);
+      if (existing.length > 0) {
+        const dup = existing[0];
+        throw new Error(
+          `转换规则 ${originRuleId} 上已有本项目扩展 (extId=${dup.extId})。` +
+            `单层树规则:每个原厂转换规则只挂 1 个 OpenDeploy 扩展。` +
+            `继续加字段映射 / 改策略请用现有 extId 调 add_convert_field_mapping / set_convert_groupby 等;` +
+            `要新建必须先 delete_convert_rule_extension 删旧扩展。` +
+            (existing.length > 1
+              ? `(注:本项目下已有 ${existing.length} 条扩展,这是历史遗留,建议合并或清理多余的。)`
+              : ''),
+        );
+      }
+    }
+
     const isv = await this.getIsv(session);
     const result = await rpcExtendConvertRule(session, { baseline, isv, displayName });
     // Persist state so subsequent patch operations have a base XML to work with.
@@ -755,7 +799,15 @@ export class K3CloudConnector implements ErpConnector {
     const session = this.requireSession();
     const baseline = this.requireBaseline('deleteConvertRuleExtension', originRuleId);
     const isv = await this.getIsv(session);
-    return rpcDeleteConvertRuleExtension(session, { baseline, extId, isv });
+    const result = await rpcDeleteConvertRuleExtension(session, { baseline, extId, isv });
+    // Drop the local state file too — otherwise listConvertRuleExtsByOrigin
+    // keeps reporting the dead extId as if it still exists, and the
+    // single-layer-tree guard refuses to create a fresh extension.
+    if (this.projectId) {
+      const p = convertRuleExtStatePath(this.projectId, extId);
+      try { await unlink(p); } catch { /* file may not exist */ }
+    }
+    return result;
   }
 
   // ─── Business rules (Plan 5.12.3b) ─────────────────────────────────
@@ -789,6 +841,36 @@ export class K3CloudConnector implements ErpConnector {
    * because the FKERNELXML the server returns to us already contains the
    * HeadEntity collection.
    */
+  /**
+   * Walk the BaseObjectId chain (extension → parent extension → ... → root form)
+   * looking for the FKERNELXML carrying `<HeadEntity oid="...">`. Multi-layer
+   * extensions need this because each extension's FKERNELXML is a delta — only
+   * the root form declares the HeadEntity element. The depth at which we
+   * find the oid does not affect the wire (overlays target HeadEntity by
+   * globally-unique oid).
+   *
+   * Returns the oid string, or null if the entire chain has no HeadEntity (which
+   * happens for non-bill extensions like base data — they have no HeadEntity
+   * concept; entity-level service rules are bill-only).
+   *
+   * The depth limit (5) is a paranoia guard against pathological cycles —
+   * real extension chains rarely exceed 2-3 levels.
+   */
+  private async resolveHeadEntityOidViaChain(startId: string): Promise<string | null> {
+    let currentId = startId;
+    for (let depth = 0; depth < 5; depth++) {
+      const xml = await this.getKernelXml(currentId);
+      if (xml) {
+        const oid = extractHeadEntityOid(xml);
+        if (oid) return oid;
+      }
+      const obj = await this.getObject(currentId);
+      if (!obj?.baseObjectId || obj.baseObjectId === currentId) return null;
+      currentId = obj.baseObjectId;
+    }
+    return null;
+  }
+
   async listBusinessRules(extensionFid: string): Promise<ListBusinessRulesResult> {
     const xml = await this.getKernelXml(extensionFid);
     if (!xml) throw new Error(`扩展 ${extensionFid} 无 FKERNELXML — 不存在或未持久化`);
@@ -829,19 +911,20 @@ export class K3CloudConnector implements ErpConnector {
       throw new Error(`扩展 ${args.extensionFid} 缺少 BaseObjectId — 不是有效扩展`);
     }
 
-    const [extXml, parentXml] = await Promise.all([
-      this.getKernelXml(args.extensionFid),
-      this.getKernelXml(ext.baseObjectId),
-    ]);
+    const extXml = await this.getKernelXml(args.extensionFid);
     if (!extXml) throw new Error(`扩展 ${args.extensionFid} 无 FKERNELXML`);
-    if (!parentXml) {
-      throw new Error(`父对象 ${ext.baseObjectId} 无 FKERNELXML — 无法定位 HeadEntity oid`);
-    }
 
-    const parentHeadOid = extractHeadEntityOid(parentXml);
+    // Walk baseObjectId chain to find HeadEntity oid. Multi-layer extensions
+    // (二层扩展) have a parent that is itself an extension delta XML with no
+    // `<HeadEntity>` node — only the root form (e.g. SAL_SaleOrder) carries
+    // the HeadEntity declaration. Server-side `<HeadEntity action="edit" oid="...">`
+    // overlays target by oid (globally unique), so the depth from which we
+    // pulled the oid does not affect the wire — pull from whichever ancestor
+    // has it.
+    const parentHeadOid = await this.resolveHeadEntityOidViaChain(ext.baseObjectId);
     if (!parentHeadOid) {
       throw new Error(
-        `父对象 ${ext.baseObjectId} 没有 HeadEntity 节点 — 实体业务规则无法挂载`,
+        `从 ${ext.baseObjectId} 起 BaseObjectId 链上找不到 HeadEntity 节点 — 实体业务规则无法挂载`,
       );
     }
 
@@ -896,15 +979,10 @@ export class K3CloudConnector implements ErpConnector {
       );
     }
 
-    const [extXml, parentXml] = await Promise.all([
-      this.getKernelXml(extensionFid),
-      this.getKernelXml(ext.baseObjectId),
-    ]);
+    const extXml = await this.getKernelXml(extensionFid);
     if (!extXml) throw new Error(`扩展 ${extensionFid} 无 FKERNELXML`);
-    if (!parentXml) {
-      throw new Error(`父对象 ${ext.baseObjectId} 无 FKERNELXML — 无法定位 HeadEntity oid`);
-    }
-    const parentHeadOid = extractHeadEntityOid(parentXml);
+
+    const parentHeadOid = await this.resolveHeadEntityOidViaChain(ext.baseObjectId);
     if (!parentHeadOid) {
       throw new Error(
         `父对象 ${ext.baseObjectId} 没有 HeadEntity 节点 — 实体业务规则无法定位`,
@@ -1048,26 +1126,19 @@ export class K3CloudConnector implements ErpConnector {
   /**
    * Enumerate FormOperations + toolbar BarButtonItems on an extension.
    *
-   * Read path: bridge `list_operations` deserializes the FKERNELXML using
-   * BOS's DcxmlSerializer + LayoutInfo walker, the same pipeline BOS Designer
-   * uses to render the operations panel + toolbar tree. Pure-TS parsing
-   * (like business-rule-parser.ts) isn't viable here because BarItemLink ↔
-   * BarButtonItem cross-collection wiring lives in BOS's strongly-typed
-   * model — the XML alone doesn't tell you which appearance owns which
-   * button after EndInit() rewires.
+   * Pure TS-side regex walk over the extension's FKERNELXML — see
+   * `rpc/operation-parser.ts`. BOS's DcxmlSerializer drops `<Form action="edit">`
+   * content without a parent baseline (memory `bos_bridge_list_operations_silent_drop`
+   * — was the 5.12.6 "silent drop" scapegoat; real-server smoke 2026-05-07
+   * proved DB persisted operations correctly, bridge reads couldn't see them),
+   * so the bridge's `list_operations` op was deleted alongside its 4 sibling
+   * write ops in the Plan 6 followup (2026-05-08).
    */
   async listOperations(extensionFid: string): Promise<ListOperationsResult> {
     const xml = await this.getKernelXml(extensionFid);
     if (!xml) {
       throw new Error(`扩展 ${extensionFid} 无 FKERNELXML — 不存在或未持久化`);
     }
-    // Routes through the TS-side parser instead of bridge.list_operations.
-    // Bridge's `DcxmlSerializer.DeserializeFromString(xml)` silently drops
-    // `<Form action="edit">` content without a parent baseline — that bug
-    // was the 5.12.6 "silent drop" scapegoat (real-server smoke 2026-05-07
-    // proved DB persisted the operations correctly; bridge reads couldn't
-    // see them). See `rpc/operation-parser.ts` docstring + memory
-    // `bos_bridge_list_operations_silent_drop`.
     return parseOperationsFromKernelXml(xml);
   }
 
@@ -1161,6 +1232,7 @@ export class K3CloudConnector implements ErpConnector {
       existingTabPagesRaw: existing.tabPages,
       existingTabControlsRaw: existing.tabControls,
       existingFormOperationsRaw: existing.formOperations,
+      existingHeadEntityRaw: existing.headEntity,
       addFormOperations: [newOp],
     };
 
@@ -1268,7 +1340,10 @@ export class K3CloudConnector implements ErpConnector {
    */
   async addToolbarButton(args: {
     extensionFid: string;
-    target: { kind: 'form' } | { kind: 'entry'; entityKey: string };
+    /** `form` = FormAppearance.Menu (顶部工具栏);
+     *  `list` = FormAppearance.ListMenu (列表菜单);
+     *  `entry` = EntryEntityAppearance.Menu (单据体工具栏)。 */
+    target: { kind: 'form' } | { kind: 'list' } | { kind: 'entry'; entityKey: string };
     buttonKey: string;
     buttonId: string;
     caption: string;
@@ -1304,13 +1379,15 @@ export class K3CloudConnector implements ErpConnector {
       throw new Error(`父对象 ${ext.baseObjectId} FKERNELXML 中未找到 layoutInfoOid`);
     }
     const loc =
-      args.target.kind === 'form'
+      args.target.kind === 'form' || args.target.kind === 'list'
         ? extractFormAppearanceLocation(parentXml)
         : extractEntryEntityAppearanceLocation(parentXml, args.target.entityKey);
     if (!loc) {
       throw new Error(
         args.target.kind === 'form'
           ? `父对象 ${ext.baseObjectId} 没有 FormAppearance — form 顶层工具栏不存在`
+          : args.target.kind === 'list'
+          ? `父对象 ${ext.baseObjectId} 没有 FormAppearance — 列表菜单挂不上`
           : `父对象 ${ext.baseObjectId} 没有 entityKey "${args.target.entityKey}" 的 EntryEntityAppearance`,
       );
     }
@@ -1318,7 +1395,9 @@ export class K3CloudConnector implements ErpConnector {
     const existing = extractExistingExtensionElements(extXml);
     const newButton: BosBarButtonElement = {
       appearanceOid: loc.oid,
-      appearanceKind: args.target.kind === 'form' ? 'FormAppearance' : 'EntryEntityAppearance',
+      appearanceKind:
+        args.target.kind === 'entry' ? 'EntryEntityAppearance' : 'FormAppearance',
+      menuWrapper: args.target.kind === 'list' ? 'ListMenu' : 'Menu',
       appearanceElementType: loc.elementType,
       buttonKey: args.buttonKey,
       buttonId: args.buttonId,
@@ -1351,6 +1430,7 @@ export class K3CloudConnector implements ErpConnector {
       existingTabPagesRaw: existing.tabPages,
       existingTabControlsRaw: existing.tabControls,
       existingFormOperationsRaw: existing.formOperations,
+      existingHeadEntityRaw: existing.headEntity,
       addBarButtons: [newButton],
     };
 
@@ -1444,6 +1524,7 @@ export class K3CloudConnector implements ErpConnector {
       existingTabPagesRaw: existing.tabPages,
       existingTabControlsRaw: existing.tabControls,
       existingFormOperationsRaw: existing.formOperations,
+      existingHeadEntityRaw: existing.headEntity,
     };
 
     const result = await saveExtension(session, req);

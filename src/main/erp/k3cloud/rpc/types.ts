@@ -406,6 +406,14 @@ export interface BosBarButtonElement {
    *  / `extractEntryEntityAppearanceLocation` from parent FKERNELXML. */
   appearanceOid: string;
   appearanceKind: 'FormAppearance' | 'EntryEntityAppearance';
+  /** Wrapper element name inside the appearance. `Menu` (default) writes to
+   *  `FormAppearance.Menu` / `EntryEntityAppearance.Menu` — the standard form
+   *  toolbar / entry toolbar. `ListMenu` writes to `FormAppearance.ListMenu`
+   *  — the bill's list-view toolbar (only valid with appearanceKind=
+   *  'FormAppearance'). Verified via Kingdee.BOS.Core.Metadata.FormElement
+   *  .FormAppearance — both `Menu` and `ListMenu` are `BarDataManager`
+   *  ComplexProperty with identical schema. */
+  menuWrapper?: 'Menu' | 'ListMenu';
   /** ElementType: 100 for FormAppearance, 35 for EntryEntityAppearance. */
   appearanceElementType: number;
   /** Stable per-appearance BarDataManager id (dashed UUID). Caller manages. */
@@ -436,6 +444,10 @@ export interface BosBarButtonElement {
 export interface BosRemoveBarButton {
   appearanceOid: string;
   appearanceKind: 'FormAppearance' | 'EntryEntityAppearance';
+  /** Wrapper element name (must match the wrapper that holds the button:
+   *  `Menu` for standard / entry toolbar, `ListMenu` for the list-view
+   *  toolbar). See BosBarButtonElement.menuWrapper. */
+  menuWrapper?: 'Menu' | 'ListMenu';
   appearanceElementType: number;
   buttonId: string;
   barItemLinkId: string;
@@ -572,6 +584,19 @@ export interface SaveExtensionRequest {
   existingPluginsRaw?: string[];
   /** Same baseline-diff requirement, for EntryEntity elements. */
   existingEntriesRaw?: string[];
+  /**
+   * Existing `<HeadEntity action="edit" oid=...>...</HeadEntity>` overlay
+   * carrying any extension-side EntityServiceRule additions. **Critical** —
+   * `addEntityServiceRule` writes via saveExtensionRaw (overlay injection)
+   * which deposits this block under `<Elements>`. Subsequent saves that go
+   * through saveExtension(req) envelope rebuild MUST re-emit this raw block
+   * or the entire HeadEntity overlay disappears (server treats omission as
+   * "remove the overlay" → entityRules silently drop). Discovered 2026-05-08
+   * via "信用额度管控" e2e: agent added entity Calculate at turn-021 (raw
+   * save succeeded) but later turn-022 register_python_plugins envelope-
+   * rebuild dropped it (post-flow listBusinessRules returned 0 entityRules).
+   */
+  existingHeadEntityRaw?: string;
   /** Same baseline-diff requirement, for EntryEntityAppearance entries. */
   existingEntryAppearancesRaw?: string[];
   /** Same baseline-diff requirement, for TabPageAppearance entries. */

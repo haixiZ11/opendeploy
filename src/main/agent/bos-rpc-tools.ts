@@ -235,6 +235,7 @@ async function loadExtensionForSave(
         tabPages: [],
         tabControls: [],
         formOperations: [],
+        headEntity: '',
       };
 
   return {
@@ -505,12 +506,13 @@ function createExtensionTool(
       name: 'k3cloud_create_extension',
       description:
         '在 K/3 Cloud 上为指定父单据(原厂表单)新建一个 BOS 扩展。扩展是在父对象上挂字段 / 插件 / 业务规则等定制内容的容器,本身不带任何字段或插件。\n' +
-        '\n创建后调用方拿到的 `extId` 用于后续:\n' +
+        '\n**单层树规则(硬约束)**:每个父对象(业务单据 / 基础资料 / 转换规则 / ...)顶多挂 1 个本项目 devCode 的扩展。所有定制都堆到那一个扩展里,**不允许并列两个扩展**。本工具内部会先调 list_extensions 检查,父对象上已有本项目扩展时**直接拒绝创建**并把 existingExtId 返回 — 你应该用那个 extId 调 `k3cloud_add_fields` / `k3cloud_register_python_plugins` / `k3cloud_add_custom_operation` 等工具继续往里加东西,而不是新建第二个。\n' +
+        '\n创建成功后拿到的 `extId` 用于后续:\n' +
         '- `k3cloud_add_fields` 批量添加扩展字段(数组,一次保存)\n' +
         '- `k3cloud_register_python_plugins` 批量挂 Python 表单插件(数组,一次保存)\n' +
+        '- `k3cloud_add_custom_operation` / `k3cloud_add_toolbar_button` 加操作 + 按钮\n' +
         '- `k3cloud_delete_extension` 不要时整个删掉\n' +
-        '\n创建前**先调 `k3cloud_list_extensions <parentFormId>`** 看是否已有可复用的扩展(同一父单据上多个扩展会变 BOS Designer 的负担)。' +
-        '`layoutInfoOid` 通常会自动从父单据的元数据里查出来,只在自动发现失败时才手动传。',
+        '\n`layoutInfoOid` 通常会自动从父单据的元数据里查出来,只在自动发现失败时才手动传。',
       parameters: {
         type: 'object',
         properties: {
@@ -557,6 +559,48 @@ function createExtensionTool(
       // 服务端 RPC case-insensitive 能查到,但 BOS Designer 列扩展时严格按字符串匹配 FBASEOBJECTID
       // 列。直接用 raw 输入会让混合大小写的 FBASEOBJECTID 落库,Designer 看不到扩展(2026-04-30 实证)。
       const canonicalFormId = parent.id;
+
+      // Single-layer-tree guard — every parent (form / basedata / convert
+      // rule / ...) gets at most ONE OpenDeploy-project extension. Refuse
+      // creating a second sibling — the agent should pile every customization
+      // into the single extension via add_fields / register_python_plugins /
+      // add_custom_operation. We treat both `developerCode === null` (most
+      // OpenDeploy-built rows after FSUPPLIERNAME-not-required experiment,
+      // memory `fuserid_not_required.md`) and `developerCode === devCode`
+      // as "this project's reusable extension"; other-ISV extensions are
+      // ignored (they're not under our control).
+      const allExtensions = await connector.listExtensions(canonicalFormId);
+      const projectDevCode = project.bos.devCode;
+      const reusable = allExtensions.filter(
+        (e) => e.developerCode == null || e.developerCode === projectDevCode,
+      );
+      if (reusable.length > 0) {
+        const target = reusable[0];
+        return JSON.stringify(
+          {
+            ok: false,
+            reason: 'duplicate_extension',
+            parentFormId: canonicalFormId,
+            existingExtId: target.extId,
+            existingExtName: target.name,
+            allReusableExtensions: reusable.map((e) => ({
+              extId: e.extId,
+              name: e.name,
+              developerCode: e.developerCode,
+              modifyDate: e.modifyDate,
+            })),
+            message:
+              `父对象 ${canonicalFormId} 上已经有本项目可复用的扩展 "${target.name}" (extId=${target.extId})。` +
+              `单层树规则:每个父对象只挂 1 个 OpenDeploy 扩展。` +
+              `要继续加东西就用 extId=${target.extId} 调 k3cloud_add_fields / k3cloud_register_python_plugins / k3cloud_add_custom_operation 等工具往里挂,不要新建第二个并列扩展。` +
+              (reusable.length > 1
+                ? `(注:本项目下已有 ${reusable.length} 个扩展,这是历史遗留 — 应整理合并到一个,或用 k3cloud_delete_extension 删掉多余的。)`
+                : ''),
+          },
+          null,
+          2,
+        );
+      }
 
       // Discover layoutInfoOid from parent FKERNELXML unless agent overrode.
       let layoutInfoOid = typeof args.layoutInfoOid === 'string' ? args.layoutInfoOid.trim() : '';
@@ -1042,7 +1086,117 @@ function buildAppearance(args: AddFieldArgs, elementType: BosFieldElement['type'
   };
 }
 
-function coerceFieldArgs(raw: Record<string, unknown>, idx: number): AddFieldArgs {
+// Recognized keys per `add_fields` field schema (definition.parameters
+// .properties.fields.items.properties). Used to detect unknown keys the
+// LLM passed and surface them via the warnings channel.
+const FIELD_SCHEMA_KEYS = new Set([
+  'type',
+  'key',
+  'caption',
+  'fieldScale',
+  'fieldPrecision',
+  'controlFieldKey',
+  'refBaseDataObjectKey',
+  'srcFindFieldName',
+  'srcDisplayFieldName',
+  'sourceField',
+  'unitTypeKey',
+  'enumTypeName',
+  'defaultCondition',
+  'container',
+  'top',
+  'left',
+  'width',
+  'labelWidth',
+  'zOrderIndex',
+  'tabindex',
+  'listTabIndex',
+  'mustInput',
+  'defaultValue',
+  'orgFieldKey',
+]);
+
+const NUMERIC_FIELD_KEYS = [
+  'fieldScale',
+  'fieldPrecision',
+  'defaultCondition',
+  'top',
+  'left',
+  'width',
+  'labelWidth',
+  'zOrderIndex',
+  'tabindex',
+  'listTabIndex',
+] as const;
+
+const STRING_FIELD_KEYS = [
+  'controlFieldKey',
+  'refBaseDataObjectKey',
+  'srcFindFieldName',
+  'srcDisplayFieldName',
+  'sourceField',
+  'unitTypeKey',
+  'enumTypeName',
+  'container',
+  'orgFieldKey',
+] as const;
+
+function coerceNumericProp(
+  raw: Record<string, unknown>,
+  prop: string,
+  idx: number,
+  warnings: string[],
+): number | undefined {
+  const v = raw[prop];
+  if (v == null) return undefined;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const coerced = Number(v);
+  if (!Number.isFinite(coerced)) {
+    warnings.push(
+      `fields[${idx}].${prop}: 期望 number,收到 ${typeof v} (${JSON.stringify(v)}),已忽略`,
+    );
+    return undefined;
+  }
+  warnings.push(
+    `fields[${idx}].${prop}: 期望 number 但收到 ${typeof v}, 已强转为 ${coerced} (建议直接传 number 字面值)`,
+  );
+  return coerced;
+}
+
+function coerceStringProp(
+  raw: Record<string, unknown>,
+  prop: string,
+  idx: number,
+  warnings: string[],
+): string | undefined {
+  const v = raw[prop];
+  if (v == null) return undefined;
+  if (typeof v === 'string') return v;
+  warnings.push(
+    `fields[${idx}].${prop}: 期望 string,收到 ${typeof v} (${JSON.stringify(v)}),已强转为 "${String(v)}"`,
+  );
+  return String(v);
+}
+
+function coerceMustInput(
+  raw: Record<string, unknown>,
+  idx: number,
+  warnings: string[],
+): true | undefined {
+  const v = raw.mustInput;
+  if (v == null || v === false) return undefined;
+  if (v === true) return true;
+  warnings.push(
+    `fields[${idx}].mustInput: 期望 boolean,收到 ${typeof v} (${JSON.stringify(v)}),已忽略 — 传 true/false 字面值,不要字符串 "true"/"1"`,
+  );
+  return undefined;
+}
+
+function coerceFieldArgs(
+  raw: Record<string, unknown>,
+  idx: number,
+  warnings: string[],
+): AddFieldArgs {
   const type = String(raw.type ?? '') as FriendlyFieldType;
   const key = String(raw.key ?? '').trim();
   const caption = String(raw.caption ?? '').trim();
@@ -1060,34 +1214,42 @@ function coerceFieldArgs(raw: Record<string, unknown>, idx: number): AddFieldArg
       `fields[${idx}] (key=${key}): orgFieldKey 只对 base_data 字段有效(${type} 字段不接受 orgFieldKey)。`,
     );
   }
+  // Surface unknown keys (LLM passed something the schema doesn't accept).
+  for (const k of Object.keys(raw)) {
+    if (FIELD_SCHEMA_KEYS.has(k)) continue;
+    warnings.push(
+      `fields[${idx}].${k}: 不是 add_fields field schema 中的 key,已忽略 — 看 k3cloud_add_fields 工具描述里 fields.items 接受的属性列表`,
+    );
+  }
+  const numericProps: Partial<Record<(typeof NUMERIC_FIELD_KEYS)[number], number | undefined>> = {};
+  for (const p of NUMERIC_FIELD_KEYS) numericProps[p] = coerceNumericProp(raw, p, idx, warnings);
+  const stringProps: Partial<Record<(typeof STRING_FIELD_KEYS)[number], string | undefined>> = {};
+  for (const p of STRING_FIELD_KEYS) stringProps[p] = coerceStringProp(raw, p, idx, warnings);
   return {
     extId: '', // not used by buildFieldElement / buildAppearance
     type,
     key,
     caption,
-    fieldScale: raw.fieldScale != null ? Number(raw.fieldScale) : undefined,
-    fieldPrecision: raw.fieldPrecision != null ? Number(raw.fieldPrecision) : undefined,
-    controlFieldKey: raw.controlFieldKey != null ? String(raw.controlFieldKey) : undefined,
-    refBaseDataObjectKey:
-      raw.refBaseDataObjectKey != null ? String(raw.refBaseDataObjectKey) : undefined,
-    srcFindFieldName:
-      raw.srcFindFieldName != null ? String(raw.srcFindFieldName) : undefined,
-    srcDisplayFieldName:
-      raw.srcDisplayFieldName != null ? String(raw.srcDisplayFieldName) : undefined,
-    orgFieldKey: raw.orgFieldKey != null ? String(raw.orgFieldKey) : undefined,
-    sourceField: raw.sourceField != null ? String(raw.sourceField) : undefined,
-    unitTypeKey: raw.unitTypeKey != null ? String(raw.unitTypeKey) : undefined,
-    enumTypeName: raw.enumTypeName != null ? String(raw.enumTypeName) : undefined,
-    defaultCondition: raw.defaultCondition != null ? Number(raw.defaultCondition) : undefined,
-    container: raw.container != null ? String(raw.container) : undefined,
-    top: raw.top != null ? Number(raw.top) : undefined,
-    left: raw.left != null ? Number(raw.left) : undefined,
-    width: raw.width != null ? Number(raw.width) : undefined,
-    labelWidth: raw.labelWidth != null ? Number(raw.labelWidth) : undefined,
-    zOrderIndex: raw.zOrderIndex != null ? Number(raw.zOrderIndex) : undefined,
-    tabindex: raw.tabindex != null ? Number(raw.tabindex) : undefined,
-    listTabIndex: raw.listTabIndex != null ? Number(raw.listTabIndex) : undefined,
-    mustInput: raw.mustInput === true ? true : undefined,
+    fieldScale: numericProps.fieldScale,
+    fieldPrecision: numericProps.fieldPrecision,
+    controlFieldKey: stringProps.controlFieldKey,
+    refBaseDataObjectKey: stringProps.refBaseDataObjectKey,
+    srcFindFieldName: stringProps.srcFindFieldName,
+    srcDisplayFieldName: stringProps.srcDisplayFieldName,
+    orgFieldKey: stringProps.orgFieldKey,
+    sourceField: stringProps.sourceField,
+    unitTypeKey: stringProps.unitTypeKey,
+    enumTypeName: stringProps.enumTypeName,
+    defaultCondition: numericProps.defaultCondition,
+    container: stringProps.container,
+    top: numericProps.top,
+    left: numericProps.left,
+    width: numericProps.width,
+    labelWidth: numericProps.labelWidth,
+    zOrderIndex: numericProps.zOrderIndex,
+    tabindex: numericProps.tabindex,
+    listTabIndex: numericProps.listTabIndex,
+    mustInput: coerceMustInput(raw, idx, warnings),
     defaultValueRaw: raw.defaultValue,
   };
 }
@@ -1238,9 +1400,19 @@ function addFieldsTool(
       if (!Array.isArray(rawFields) || rawFields.length === 0) {
         throw new Error('k3cloud_add_fields 需要 fields 参数(至少一个字段的数组)。');
       }
+      // Surface dropped inputs so the LLM gets feedback. Memory
+      // followup_tool_feedback_warnings_on_dropped_inputs.
+      const warnings: string[] = [];
+      const TOP_KEYS = new Set(['extId', 'fields', 'layoutInfoOid']);
+      for (const k of Object.keys(args)) {
+        if (TOP_KEYS.has(k)) continue;
+        warnings.push(
+          `未知顶层参数 ${k}: 不在 k3cloud_add_fields schema 中,已忽略 — 仅接受 extId / fields / layoutInfoOid`,
+        );
+      }
       // Validate each field upfront so a partial save never happens.
       const fieldArgsList: AddFieldArgs[] = rawFields.map((raw, i) =>
-        coerceFieldArgs((raw ?? {}) as Record<string, unknown>, i),
+        coerceFieldArgs((raw ?? {}) as Record<string, unknown>, i, warnings),
       );
       rejectDuplicates(fieldArgsList, (fa) => fa.key, 'fields 的 key');
 
@@ -1290,6 +1462,83 @@ function addFieldsTool(
             `fields[${idx}] (key=${fa.key}): 找不到名为 "${name}" 的枚举类型。先调 k3cloud_list_enum_types 看完整列表(常用的有 审核状态 / 单据状态 / 是否启用 / 优先级)。`,
         },
       );
+
+      // base_property pre-flight: validate srcDisplayFieldName exists on
+      // the referenced base data, with the right type. BOS server silently
+      // mis-deserializes BasePropertyField when srcDisplayFieldName points
+      // at a non-existent field — the persisted appearance falls back to
+      // the base TextFieldAppearance class instead of BasePropertyFieldAppearance,
+      // and from then on every GetBusinessObjectMetaData on the extension
+      // throws "字段外观不存在或者类型不对" (FormMetaServicePlugIn:2476)
+      // making the whole extension unrecoverable. Discovered 2026-05-08
+      // "信用额度管控" e2e: srcDisplayFieldName="FName" on BD_Empinfo (which
+      // has FSHRName/FStaffNumber but no FName) bricked the extension.
+      const DISPLAYABLE_LOOKUP_TYPES = new Set([
+        'TextField', 'LargeRichTextField', 'IntegerField', 'DecimalField',
+        'AmountField', 'QtyField', 'DateTimeField', 'DateField', 'CheckBoxField',
+        'ComboField', 'MulComboField', 'ColorField', 'MobileField',
+        'MultiLangTextField',
+      ]);
+      for (const fa of fieldArgsList) {
+        if (fa.type !== 'base_property' || !fa.sourceField) continue;
+        const desired = (fa.srcDisplayFieldName ?? 'FName').trim();
+
+        // Find the source BaseDataField's lookUpObjectId — same batch first,
+        // then existing extension fields, then parent form fields.
+        let lookupGuid: string | undefined;
+        const sameBatch = fieldArgsList.find(
+          (f) => f.type === 'base_data' && f.key.toLowerCase() === fa.sourceField!.toLowerCase(),
+        );
+        if (sameBatch) lookupGuid = sameBatch.refBaseDataObjectKey;
+        if (!lookupGuid) {
+          for (const raw of existing.fields) {
+            if (!/^<BaseDataField\b/.test(raw)) continue;
+            const km = raw.match(/<Key>([^<]+)<\/Key>/);
+            if (km?.[1].toLowerCase() !== fa.sourceField!.toLowerCase()) continue;
+            const gm = raw.match(/<LookUpObjectID>([^<]+)<\/LookUpObjectID>/);
+            if (gm) lookupGuid = gm[1];
+            break;
+          }
+        }
+        if (!lookupGuid && ext.baseObjectId) {
+          const parentXml = await connector.getKernelXml(ext.baseObjectId);
+          if (parentXml) {
+            const re = /<BaseDataField\b[^>]*>([\s\S]*?)<\/BaseDataField>/g;
+            for (const m of parentXml.matchAll(re)) {
+              const body = m[1];
+              const km = body.match(/<Key>([^<]+)<\/Key>/);
+              if (km?.[1].toLowerCase() !== fa.sourceField!.toLowerCase()) continue;
+              const gm = body.match(/<LookUpObjectID>([^<]+)<\/LookUpObjectID>/);
+              if (gm) lookupGuid = gm[1];
+              break;
+            }
+          }
+        }
+        if (!lookupGuid) {
+          // sourceField wasn't located — skip validation rather than throw.
+          // Reason: in unit-test fake connectors the parent XML often omits
+          // BaseDataField mocks, and we don't want pre-flight to mask the
+          // BOS server's own "sourceField not found" runtime check. The
+          // critical case (srcDisplayFieldName silent-drop) only happens
+          // when sourceField IS found — so skipping here is safe.
+          continue;
+        }
+
+        const lookupFormId = await connector.resolveLookupClassFormId(lookupGuid);
+        if (!lookupFormId) continue; // Exotic lookup class — let it through.
+
+        const lookupFields = await connector.getFields(lookupFormId);
+        const displayables = lookupFields.filter((f) => DISPLAYABLE_LOOKUP_TYPES.has(f.type));
+        const found = displayables.find((f) => f.key.toLowerCase() === desired.toLowerCase());
+        if (!found) {
+          const suggestions = displayables.slice(0, 12)
+            .map((f) => `${f.key}(${f.name})`).join(', ');
+          throw new Error(
+            `base_property 字段 ${fa.key}: srcDisplayFieldName="${desired}" 在 ${lookupFormId} 上不存在 — 错传会让 BOS 服务端反序列化生成损坏的 appearance,扩展会卡死(GetBusinessObjectMetaData 永远抛"字段外观不存在或者类型不对")。` +
+            `可用的显示字段: ${suggestions}。先调 k3cloud_describe_basedata("${lookupFormId}") 反查再决定。`,
+          );
+        }
+      }
 
       // Recognize entry containers — fields whose `container` matches a
       // parent or extension-built EntryEntity Key route through the
@@ -1389,6 +1638,7 @@ function addFieldsTool(
             '所有字段已一次性写入。BOS Designer 工具栏点刷新按钮即可看到。' +
             '**字段已自动排版**:贴在原厂字段最右边界右侧一列,纵向顺排;之后再加字段会接着排到下方,无需拖动。如视觉位置不理想用户可在 BOS Designer 中手动微调。' +
             '验证全部字段已落库:调 k3cloud_get_extension_fields(不是 k3cloud_get_fields)。',
+          ...(warnings.length > 0 && { warnings }),
         },
         null,
         2,
