@@ -22,6 +22,42 @@ Most "AI assistant tools" today look like this:
 
 **What OpenDeploy aims to do: the whole thing, done by AI.**
 
+## Demo
+
+<p align="center">
+  <img src="./assets/wizard.gif" alt="OpenDeploy initial setup" width="720" />
+  <br/><sub>Initial setup — configure your LLM provider</sub>
+</p>
+
+<p align="center">
+  <img src="./assets/project.gif" alt="OpenDeploy create a project" width="720" />
+  <br/><sub>Create a project — connect to Kingdee Cloud Cosmic V9</sub>
+</p>
+
+<p align="center">
+  <img src="./assets/case.gif" alt="OpenDeploy real customization" width="720" />
+  <br/><sub>Real customization end-to-end — business request to applied BOS extension</sub>
+</p>
+
+## Features
+
+**LLM providers** (BYO API key): Claude · GPT · DeepSeek · Qwen · GLM · Kimi · Doubao · Hunyuan · MiniMax · Baichuan · Ollama (local)
+
+**Kingdee Cloud Cosmic V9 customization** (BOS HTTP RPC end-to-end — never touches your database):
+
+- Extension lifecycle — create / delete / list
+- Fields — 12 types (text / number / amount / quantity / date / checkbox / combo / base-data / mnemonic / unit / formula / property-binding)
+- Entry body — EntryEntity / TabPage / TabControl: create / delete / rename
+- Python form plugins — batch register, output lands in the project directory
+- Business rules — Calculate / GetInvStock / ...
+- Custom operations + toolbar buttons
+- Convert rules — extension + convert plugins
+- Property grid — required / default value / row-number / org-field binding / entity required
+
+**Knowledge base** (10 skills / 57 markdown files / 10,638 lines, pulled from GitHub with Gitee mirror fallback): implementation methodology + customization decision trees + BOS element references + customer-validated case studies
+
+**Architecture**: zero self-hosted servers · credentials stay local (plaintext in `settings.json`, never reaches the renderer process) · single-consultant local tool
+
 ## Getting started
 
 Requires Windows 10/11 + an LLM API key.
