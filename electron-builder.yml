@@ -10,8 +10,9 @@ files:
   - out/**/*
   - resources/**/*
   - knowledge/**/*
-  - "!**/node_modules/**/*"
-  - "!**/.scratch/**/*"
+  # node_modules 不能整个排除 —— electron-vite 默认把 deps 列为 external,
+  # 运行时还要从 app.asar/node_modules 解析。electron-builder 默认只打
+  # production dependencies,devDependencies 自动跳过,无需手写 exclusion。
 
 # bos-bridge sidecar (.NET 4.8) — must live outside asar so the .exe is
 # directly callable. The main process resolves it via BOS_BRIDGE_EXE
