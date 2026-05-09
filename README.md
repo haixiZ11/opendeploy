@@ -62,18 +62,23 @@ Most "AI assistant tools" today look like this:
 
 Requires Windows 10/11 + an LLM API key.
 
+**Download the installer (recommended)**
+
+[**👉 v0.1.0-alpha.1 installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
+
+**Local development**
+
 ```bash
 pnpm install
 pnpm dev
 ```
 
-A prebuilt installer will ship with v0.1 Alpha.
-
 ## Status
 
-Under active development, on the eve of v0.1 Alpha.
+**v0.1.0-alpha.1 released** — internal preview for BOS customization consultants. Features / API / UX may still change.
 
-- Target: Kingdee Cloud Cosmic V9 on-premise
+- Target: Kingdee Cloud Cosmic V9 on-premise (Standard / Enterprise editions)
+- Platform: Windows x64 only (macOS / Linux pending user feedback)
 - 10 skills / 57 markdown files / 10,638 lines of industry knowledge
 
 ## License

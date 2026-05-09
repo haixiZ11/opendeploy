@@ -62,18 +62,23 @@
 
 需要 Windows 10/11 + 一个 LLM API Key。
 
+**下载安装包(推荐)**
+
+[**👉 v0.1.0-alpha.1 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
+
+**本地开发**
+
 ```bash
 pnpm install
 pnpm dev
 ```
 
-v0.1 Alpha 会提供现成安装包。
-
 ## 当前状态
 
-开发中,v0.1 Alpha 前夕。
+**v0.1.0-alpha.1 已发布** —— 面向 BOS 二开顾问的内部预览版,功能 / API / UX 仍可能变动。
 
-- 目标: 金蝶云星空 V9 私有部署版
+- 目标: 金蝶云星空 V9 私有部署版(标准版 / 企业版)
+- 平台: 仅 Windows x64(macOS / Linux 视用户反馈)
 - 10 个 skill / 57 份 markdown / 10638 行行业知识
 
 ## 开源协议
