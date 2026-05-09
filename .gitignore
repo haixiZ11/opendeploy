@@ -90,3 +90,7 @@ __pycache__/
 
 # Electron forge / builder 元产出
 .webpack/
+
+# Visual Studio 自动生成(bos-bridge 用 csproj,sln 不入库)
+*.sln
+.vs/
