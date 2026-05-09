@@ -1,0 +1,43 @@
+appId: cn.opendeploy.app
+productName: OpenDeploy
+copyright: Copyright (c) 2026 qiaolei
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**/*
+  - resources/**/*
+  - knowledge/**/*
+  - "!**/node_modules/**/*"
+  - "!**/.scratch/**/*"
+
+# bos-bridge sidecar (.NET 4.8) — must live outside asar so the .exe is
+# directly callable. The main process resolves it via BOS_BRIDGE_EXE
+# (set in main/index.ts when app.isPackaged).
+extraResources:
+  - from: bos-bridge/bin/Release/net48
+    to: bos-bridge
+    filter:
+      - "*.exe"
+      - "*.exe.config"
+      - "*.dll"
+
+asar: true
+asarUnpack: []
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 开达 OpenDeploy
