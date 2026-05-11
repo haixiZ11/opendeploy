@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { encodeAppLayer } from '../../src/main/erp/k3cloud/rpc/codec';
 import { K3CloudConnector } from '../../src/main/erp/k3cloud/connector';
-import { buildSaleOrderOutStockBaseline } from '../../src/main/erp/k3cloud/rpc/convert-rule-baselines';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -291,47 +290,8 @@ describe('K3CloudConnector metadata RPC reads', () => {
  * client-side with `no DefaultConvertPolicy with TargetEntryKey=…`).
  */
 describe('K3CloudConnector.extendConvertRule patch-base XML persistence', () => {
-  // Minimal extension-template fixture mirroring the bundled
-  // `sale-order-outstock-extension-template.xml` shape — full Policies
-  // collection + cloned FieldMaps + rule-level Name/Id/Key triple.
-  const EXT_TEMPLATE_XML =
-    '<?xml version="1.0" encoding="utf-16"?>' +
-    '<ConvertRuleMetaData><Rule>' +
-    '<ConvertRule ElementType="6000" ElementStyle="0">' +
-    '<Policies>' +
-    '<DefaultConvertPolicy ElementType="7002" ElementStyle="0">' +
-    '<SourceEntryKey /><TargetEntryKey />' +
-    '<FieldMaps>' +
-    '<FieldMap ElementType="60002" ElementStyle="0">' +
-    '<TargetFieldKey>FBillNo</TargetFieldKey>' +
-    '<SourceFieldKey>FBillNo</SourceFieldKey>' +
-    '<Id>521162116b1442c6a4fcb70cdca6c57c</Id>' +
-    '</FieldMap>' +
-    '</FieldMaps>' +
-    '<Id>aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee</Id>' +
-    '</DefaultConvertPolicy>' +
-    '<ConvertGroupByPolicy ElementType="7003" ElementStyle="0">' +
-    '<Id>11111111-2222-3333-4444-555555555555</Id>' +
-    '</ConvertGroupByPolicy>' +
-    '</Policies>' +
-    '<Name>转换规则</Name>' +
-    '<Id>793e8fdc-da7f-4058-a6b6-08422cd82688</Id>' +
-    '<Key>fd7c0d17-162c-4af0-8865-d88b56f8bbbf</Key>' +
-    '<ElementType>6000</ElementType>' +
-    '</ConvertRule>' +
-    '</Rule></ConvertRuleMetaData>';
-
-  const ORIGIN_XML =
-    '<?xml version="1.0" encoding="utf-16"?>' +
-    '<ConvertRuleMetaData><Rule>' +
-    '<ConvertRule ElementType="6000"><Id>SaleOrder-OutStock</Id></ConvertRule>' +
-    '</Rule></ConvertRuleMetaData>';
-
-  const baseline = buildSaleOrderOutStockBaseline({
-    originXml: ORIGIN_XML,
-    extensionTemplateXml: EXT_TEMPLATE_XML,
-  });
-  const baselines = { 'SaleOrder-OutStock': baseline };
+  // Plan 7.0:patch base 从内置通用 template (`convert-rule-extension-template.xml`)
+  // 派生,不再依赖测试 fixture XML。
 
   const PROJECT_ID = 'p-test-extend-convert';
 
@@ -383,17 +343,20 @@ describe('K3CloudConnector.extendConvertRule patch-base XML persistence', () => 
           ),
         );
       if (url.includes('GetConvertRule')) {
-        // First call resolves originId for liveOriginParas; second resolves
-        // the new ext for the post-save InheritPath read. Both share the
-        // same minimal stub.
+        // Plan 7.0: first call resolves originId for live `buildOriginParas`
+        // + form ids (top-level SourceFormId + Rule.TargetFormId); second
+        // resolves the new ext for the post-save InheritPath read. Both
+        // share the same minimal stub.
         return new Response(
           encodeAppLayer(
             JSON.stringify({
               Id: 'whatever',
+              Name: [{ Key: 2052, Value: '销售订单至销售出库单' }],
               Version: '1',
               MainVersion: '1',
               InheritPath: ',SaleOrder-OutStock,',
-              Rule: { Policies: [] },
+              SourceFormId: 'SAL_SaleOrder',
+              Rule: { SourceFormId: 'SAL_SaleOrder', TargetFormId: 'SAL_OUTSTOCK', Policies: [] },
             }),
           ),
         );
@@ -414,7 +377,7 @@ describe('K3CloudConnector.extendConvertRule patch-base XML persistence', () => 
     setupHome();
     try {
       globalThis.fetch = buildFetch();
-      const c = new K3CloudConnector(TEST_CREDS, baselines, PROJECT_ID);
+      const c = new K3CloudConnector(TEST_CREDS, PROJECT_ID);
       await c.connect();
 
       const result = await c.extendConvertRule('SaleOrder-OutStock', '我的扩展');
@@ -461,7 +424,7 @@ describe('K3CloudConnector.extendConvertRule patch-base XML persistence', () => 
     setupHome();
     try {
       globalThis.fetch = buildFetch();
-      const c = new K3CloudConnector(TEST_CREDS, baselines, PROJECT_ID);
+      const c = new K3CloudConnector(TEST_CREDS, PROJECT_ID);
       await c.connect();
 
       const result = await c.extendConvertRule('SaleOrder-OutStock');

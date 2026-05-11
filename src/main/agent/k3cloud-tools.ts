@@ -1,5 +1,4 @@
 import { getActiveConnector, getConnectionState } from '../erp/active';
-import { UnsupportedConvertRuleError } from '../erp/k3cloud/rpc/convert-rule-baselines';
 import type { ToolHandler } from './tools';
 import type { K3CloudConnector } from '../erp/k3cloud/connector';
 import {
@@ -843,30 +842,15 @@ function describeConvertRuleTool(c: K3CloudConnector): ToolHandler {
 // `convert-rule-baselines.ts`. Add more in
 // `src/main/erp/k3cloud/rpc/bundled-convert-rule-baselines.ts`.
 
-async function runWithUnsupportedAware<T>(
-  fn: () => Promise<T>,
-  shape: (result: T) => Record<string, unknown>,
-  unsupportedExtras: Record<string, unknown>,
-): Promise<string> {
-  try {
-    return JSON.stringify(shape(await fn()));
-  } catch (err) {
-    if (err instanceof UnsupportedConvertRuleError) {
-      return JSON.stringify({ ok: false, ...unsupportedExtras, message: err.message });
-    }
-    throw err;
-  }
-}
-
 function createConvertRuleExtensionTool(c: K3CloudConnector): ToolHandler {
   return {
     definition: {
       name: 'k3cloud_create_convert_rule_extension',
       description:
         '在原厂转换规则上**新建一条扩展**(顾问最常做的二开),让客户可以叠加 ISV 自己的字段映射 / 过滤条件 / 分组规则 / 表单插件。' +
-        '\n\n调用前提:用户先用 `k3cloud_describe_convert_rule(originRuleId)` 看过当前规则状态(`extension.hasExtends` 可能已经是 true)。然后调本工具创建空扩展,再用后续工具(Plan 5.12.4 v2 Task 3-4)往里加字段映射 / 改策略。' +
-        '\n\n**v0.1 重要限制:仅支持 `SaleOrder-OutStock`**(销售订单 → 销售出库单)一条规则。其他规则会报"未支持"错误,需要顾问到 BOS Designer 里手工建,等 v0.2 我们补上通用 XML 序列化器。' +
-        '\n\n返回 `{ok, newExtensionId, ...}`,`newExtensionId` 是 32 位 hex GUID,后续 Task 3-4 工具操作扩展时会需要。' +
+        '\n\n调用前提:用户先用 `k3cloud_describe_convert_rule(originRuleId)` 看过当前规则状态(`extension.hasExtends` 可能已经是 true)。然后调本工具创建空扩展,再用后续工具往里加字段映射 / 改策略。' +
+        '\n\n**支持任意原厂转换规则**(Plan 7.0 通用化);`originRuleId` 形如 `SaleOrder-OutStock` / `PurchaseOrder-InStock` / `SaleOrder-AR_receivable` 等。' +
+        '\n\n返回 `{ok, newExtensionId, ...}`,`newExtensionId` 是 32 位 hex GUID,后续工具操作扩展时会需要。' +
         '\n\n副作用:服务端建一条新的扩展行(`__rules__[1]` 的 paras.OldId=null + paras.Id=新 GUID,oldIds 不含新 GUID 即代表新建)。**用户在 BOS Designer 里要 F5 刷新或重开客户端才能看到**。',
       parameters: {
         type: 'object',
@@ -893,18 +877,15 @@ function createConvertRuleExtensionTool(c: K3CloudConnector): ToolHandler {
           ? args.displayName.trim()
           : undefined;
       const trimmed = originRuleId.trim();
-      return runWithUnsupportedAware(
-        () => c.extendConvertRule(trimmed, displayName),
-        (result) => ({
-          ok: result.ok,
-          newExtensionId: result.newExtensionId,
-          originRuleId: trimmed,
-          message: result.ok
-            ? `扩展已创建,新扩展 ID = ${result.newExtensionId}。请用户在 BOS Designer 里 F5 刷新(或关闭客户端重登)以看到新扩展。`
-            : `服务端返回非空响应,可能未成功:${result.raw.slice(0, 200)}`
-        }),
-        { originRuleId: trimmed }
-      );
+      const result = await c.extendConvertRule(trimmed, displayName);
+      return JSON.stringify({
+        ok: result.ok,
+        newExtensionId: result.newExtensionId,
+        originRuleId: trimmed,
+        message: result.ok
+          ? `扩展已创建,新扩展 ID = ${result.newExtensionId}。请用户在 BOS Designer 里 F5 刷新(或关闭客户端重登)以看到新扩展。`
+          : `服务端返回非空响应,可能未成功:${result.raw.slice(0, 200)}`
+      });
     }
   };
 }
@@ -916,14 +897,14 @@ function deleteConvertRuleExtensionTool(c: K3CloudConnector): ToolHandler {
       description:
         '删除原厂转换规则上的一条**扩展**。删除是把扩展从 `__rules__` 数组移除但保留在 `__oldIds__` —— 服务端会按差集语义清掉对应行。' +
         '\n\n调用场景:顾问试错后想回滚某条扩展,或者扩展用错了 ISV 想重建。' +
-        '\n\n**v0.1 重要限制:仅支持 `SaleOrder-OutStock`** 一条规则。' +
-        '\n\n参数:`originRuleId` 是原厂规则 ID(目前只能是 "SaleOrder-OutStock"),`extId` 是要删的扩展 GUID(`k3cloud_describe_convert_rule.extension.lineage` 里能看到链路)。',
+        '\n\n**支持任意原厂转换规则**(Plan 7.0 通用化)。' +
+        '\n\n参数:`originRuleId` 是原厂规则 ID(如 `SaleOrder-OutStock`),`extId` 是要删的扩展 GUID(`k3cloud_describe_convert_rule.extension.lineage` 里能看到链路)。',
       parameters: {
         type: 'object',
         properties: {
           originRuleId: {
             type: 'string',
-            description: '扩展所在的原厂规则 ID,v0.1 只支持 "SaleOrder-OutStock"。'
+            description: '扩展所在的原厂规则 ID,如 `SaleOrder-OutStock`。'
           },
           extId: {
             type: 'string',
@@ -944,18 +925,15 @@ function deleteConvertRuleExtensionTool(c: K3CloudConnector): ToolHandler {
       }
       const trimmedRule = originRuleId.trim();
       const trimmedExt = extId.trim();
-      return runWithUnsupportedAware(
-        () => c.deleteConvertRuleExtension(trimmedRule, trimmedExt),
-        (result) => ({
-          ok: result.ok,
-          originRuleId: trimmedRule,
-          extId: trimmedExt,
-          message: result.ok
-            ? `扩展 ${trimmedExt} 已删除。请用户在 BOS Designer 里 F5 刷新(或关闭客户端重登)以确认。`
-            : `服务端返回非空响应,可能未成功:${result.raw.slice(0, 200)}`
-        }),
-        { originRuleId: trimmedRule, extId: trimmedExt }
-      );
+      const result = await c.deleteConvertRuleExtension(trimmedRule, trimmedExt);
+      return JSON.stringify({
+        ok: result.ok,
+        originRuleId: trimmedRule,
+        extId: trimmedExt,
+        message: result.ok
+          ? `扩展 ${trimmedExt} 已删除。请用户在 BOS Designer 里 F5 刷新(或关闭客户端重登)以确认。`
+          : `服务端返回非空响应,可能未成功:${result.raw.slice(0, 200)}`
+      });
     }
   };
 }
@@ -969,7 +947,7 @@ function addConvertFieldMappingTool(c: K3CloudConnector): ToolHandler {
       description:
         '在已建的转换规则扩展上**增加一条字段映射**。支持直接字段取值(`sourceFieldKey + mode=Auto/Sum/...`)和 IronPython 公式映射(`formula + mode=Formula`)两种形式。' +
         '\n\n**能力边界**:本工具只在父规则的 DefaultConvertPolicy 层(头→头 / 标准 sourceEntry→targetEntry)做映射,K/3 标准转换规则只支持 1 主关联实体。跨 entry 携带(自建 entry 之间 / 子单据体↔单据体)是 BOS 平台限制不在范围内 — **工具内部对 entry 一致性做了校验,不一致的调用返回 `entry_mismatch` 并 hint 转向 `k3cloud_add_convert_plugin`**(注册 PythonConvertPlugIn,在 `AfterConvert(e)` 事件里通过 `BusinessDataServiceHelper.LoadSingle` 取源单完整 DynamicObject 后写入目标单据体)。' +
-        '\n\n前提:已通过 `k3cloud_create_convert_rule_extension` 建立了扩展(v0.1 仅支持 SaleOrder-OutStock)。工具会读取 OpenDeploy 本地保存的扩展 XML 状态,通过 .NET 桥修改后重新保存到服务端。' +
+        '\n\n前提:已通过 `k3cloud_create_convert_rule_extension` 建立了扩展(任意原厂规则均可,Plan 7.0 通用化)。工具会读取 OpenDeploy 本地保存的扩展 XML 状态,通过 .NET 桥修改后重新保存到服务端。' +
         '\n\n`targetEntryKey` 指定要操作的 DefaultConvertPolicy 层(SaleOrder-OutStock 典型值 `FEntity` = 行体层;不传则操作头体层)。' +
         '\n\n`mode` 枚举:Auto / Sum / Average / Count / Max / Min / Formula / Join / SumFormula。常用:Auto(直接取值) / Sum(合并求和) / Formula(IronPython 公式)。' +
         '\n\n**保存成功后**:请让用户关闭客户端整个重登才能看到新字段映射(BOS 客户端有缓存)。',

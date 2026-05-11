@@ -61,11 +61,7 @@ import {
   deleteConvertRuleExtension as rpcDeleteConvertRuleExtension,
   type ExtendConvertRuleResult,
 } from './rpc/extend-convert-rule';
-import {
-  DEFAULT_LOCALE_SLOTS,
-  UnsupportedConvertRuleError,
-  type ConvertRuleBaseline,
-} from './rpc/convert-rule-baselines';
+import { DEFAULT_LOCALE_SLOTS } from './rpc/convert-rule-baselines';
 import { buildOriginParas } from './rpc/build-origin-paras';
 import { buildMinimalOriginXml } from './rpc/extend-convert-rule';
 import { getCurrentIsv } from './rpc/get-current-isv';
@@ -167,7 +163,6 @@ export class K3CloudConnector implements ErpConnector {
 
   constructor(
     public readonly config: BosRpcCredentials,
-    private readonly convertRuleBaselines: Record<string, ConvertRuleBaseline> = {},
     /** Project ID for on-disk state (convert-rule-ext XML, backups). */
     private readonly projectId?: string,
   ) {}
@@ -514,16 +509,10 @@ export class K3CloudConnector implements ErpConnector {
 
   // ─── Convert rules (write) ─────────────────────────────────────────
   //
-  // v0.1 ships baselines for `SaleOrder-OutStock` only — generalizing
-  // requires a TS port of `DcxmlSerializer` or per-rule baseline capture.
-  // Throws `UnsupportedConvertRuleError` for any other ruleId; tool layer
-  // routes that to a friendly user message.
-
-  private requireBaseline(op: string, originRuleId: string): ConvertRuleBaseline {
-    const baseline = this.convertRuleBaselines[originRuleId];
-    if (!baseline) throw new UnsupportedConvertRuleError(op, originRuleId);
-    return baseline;
-  }
+  // Plan 7.0(2026-05-11):任意原厂 ruleId 通用化。connector 调
+  // `getConvertRule(originRuleId)` 取 live → `buildOriginParas(live)` 构
+  // originParas;extension template 是 `convert-rule-extension-template.xml`
+  // 通用 Policy 骨架,运行时注入 SourceFormId/TargetFormId。
 
   /**
    * Build the ISV descriptor for SaveRulesV9.

@@ -4,12 +4,9 @@ import {
   extendConvertRule,
   deleteConvertRuleExtension,
 } from '../../../src/main/erp/k3cloud/rpc/extend-convert-rule';
-import {
-  buildSaleOrderOutStockBaseline,
-  type ConvertRuleBaseline,
-} from '../../../src/main/erp/k3cloud/rpc/convert-rule-baselines';
+import { KINGDEE_ISV_DESCRIPTOR } from '../../../src/main/erp/k3cloud/rpc/convert-rule-baselines';
 import type { KdSession } from '../../../src/main/erp/k3cloud/rpc/http-client';
-import type { IsvDescriptor } from '../../../src/main/erp/k3cloud/rpc/save-convert-rules';
+import type { ConvertRuleParas, IsvDescriptor } from '../../../src/main/erp/k3cloud/rpc/save-convert-rules';
 
 const realFetch = globalThis.fetch;
 
@@ -33,32 +30,37 @@ const UNW_ISV: IsvDescriptor = {
 const LIVE_VERSION = '634703641059182961';
 const LIVE_MAIN_VERSION = '639131611327136100';
 
-const ORIGIN_XML =
-  '<?xml version="1.0" encoding="utf-16"?><ConvertRuleMetaData><Rule>' +
-  '<ConvertRule ElementType="6000"><Id>aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee</Id></ConvertRule>' +
-  '</Rule></ConvertRuleMetaData>';
-const EXT_TEMPLATE_XML =
-  '<?xml version="1.0" encoding="utf-16"?><ConvertRuleMetaData><Rule>' +
-  '<ConvertRule ElementType="6000"><Policies>' +
-  '<LinkEntityPolicy ElementType="7008"><Id>11111111-2222-3333-4444-555555555555</Id></LinkEntityPolicy>' +
-  '</Policies></ConvertRule></Rule></ConvertRuleMetaData>';
-
-const SAMPLE_BASELINE: ConvertRuleBaseline = buildSaleOrderOutStockBaseline({
-  originXml: ORIGIN_XML,
-  extensionTemplateXml: EXT_TEMPLATE_XML,
-});
-
 /**
  * Plan 7.0: caller (connector) builds `originParas` from a live
  * `getConvertRule` response via `buildOriginParas(live)` and passes it in.
  * The rpc layer no longer fetches live values; it just relays what the
- * caller supplied. These tests reflect the new contract by providing
- * originParas with the LIVE_* values already merged in.
+ * caller supplied. Shape mirrors the v0.1 SaleOrder-OutStock origin paras
+ * captured in req-163 (see save-convert-rules.ts top-of-file).
  */
-const SAMPLE_ORIGIN_PARAS = {
-  ...SAMPLE_BASELINE.originParas,
+const SAMPLE_ORIGIN_PARAS: ConvertRuleParas = {
+  Id: 'SaleOrder-OutStock',
+  OldId: 'SaleOrder-OutStock',
+  ModelTypeId: 790,
+  BaseObjectId: ' ',
+  DevType: 0,
+  SubSystemId: null,
   Version: LIVE_VERSION,
   MainVersion: LIVE_MAIN_VERSION,
+  PackageId: 'K3Cloud_ERP',
+  HasExtends: false,
+  RunTime: false,
+  LayoutViewId: null,
+  OldLayoutViewId: null,
+  LayoutViewVersion: null,
+  DependencyObjectId: null,
+  FirstNonExtendObjectID: 'SaleOrder-OutStock',
+  ISV: KINGDEE_ISV_DESCRIPTOR,
+  UpdateIdToKey: false,
+  SourceFormId: null,
+  InheritPath: ',SaleOrder-OutStock,',
+  IsInheritElement: false,
+  ModelTypeSubId: 0,
+  Name: '[{"Key":2052,"Value":"销售订单至销售出库单"}]',
 };
 
 /**
@@ -127,11 +129,12 @@ describe('extendConvertRule', () => {
 
     const outer = JSON.parse(decodeAppLayerString(capturedAp0.value));
     const rule0 = JSON.parse(outer.__rules__[0]);
-    expect(rule0.__source__).not.toBe(ORIGIN_XML);
     expect(rule0.__source__).toContain('<Status action="reset" />');
     expect(rule0.__source__).toContain('<Id>SaleOrder-OutStock</Id>');
     expect(rule0.__source__).toContain('<Key>SaleOrder-OutStock</Key>');
+    // Minimal envelope must NOT carry any Policy body
     expect(rule0.__source__).not.toContain('LinkEntityPolicy');
+    expect(rule0.__source__).not.toContain('DefaultConvertPolicy');
   });
 
   it('rule[0] paras carry live Version + MainVersion (not the baseline snapshot)', async () => {

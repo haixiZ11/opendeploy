@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildK3CloudTools } from '../../src/main/agent/k3cloud-tools';
-import { UnsupportedConvertRuleError } from '../../src/main/erp/k3cloud/rpc/convert-rule-baselines';
 import type { K3CloudConnector } from '../../src/main/erp/k3cloud/connector';
 import type {
   ExtensionMeta,
@@ -850,25 +849,8 @@ describe('k3cloud_create_convert_rule_extension tool', () => {
     await expect(tool.execute({ originRuleId: '   ' })).rejects.toThrow(/originRuleId/);
   });
 
-  it('returns ok=false JSON for unsupported rules (v0.1 baseline limitation)', async () => {
-    const fake = makeFake({
-      extendConvertRule: vi.fn(async () => {
-        throw new UnsupportedConvertRuleError(
-          'extendConvertRule',
-          'PUR_PurchaseOrder-PUR_Receive'
-        );
-      })
-    });
-    const tool = findTool(fake);
-
-    const parsed = JSON.parse(
-      await tool.execute({ originRuleId: 'PUR_PurchaseOrder-PUR_Receive' })
-    );
-
-    expect(parsed.ok).toBe(false);
-    expect(parsed.message).toContain('BOS Designer');
-    expect(parsed.message).toContain('SaleOrder-OutStock');
-  });
+  // Plan 7.0:UnsupportedConvertRuleError 已退役(通用化后任意 ruleId 都能跑)。
+  // 原 "returns ok=false JSON for unsupported rules" 测试已删。
 
   it('rethrows on unrecognized errors (network, server)', async () => {
     const fake = makeFake({
@@ -926,22 +908,8 @@ describe('k3cloud_delete_convert_rule_extension tool', () => {
     ).rejects.toThrow(/extId/);
   });
 
-  it('returns ok=false JSON for unsupported rules', async () => {
-    const fake = makeFake({
-      deleteConvertRuleExtension: vi.fn(async () => {
-        throw new UnsupportedConvertRuleError('deleteConvertRuleExtension', 'X');
-      })
-    });
-    const tool = findTool(fake);
-
-    const parsed = JSON.parse(
-      await tool.execute({ originRuleId: 'X', extId: 'someExtId' })
-    );
-
-    expect(parsed.ok).toBe(false);
-    expect(parsed.message).toContain('BOS Designer');
-    expect(parsed.message).toContain('SaleOrder-OutStock');
-  });
+  // Plan 7.0:UnsupportedConvertRuleError 已退役,原 "returns ok=false JSON for
+  // unsupported rules" 测试已删。
 
   it('omits parallelSafe (write tool — must serialize)', () => {
     expect(findTool(makeFake()).parallelSafe).toBeUndefined();
