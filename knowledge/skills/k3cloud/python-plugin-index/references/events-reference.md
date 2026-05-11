@@ -385,6 +385,96 @@ def AfterBarItemClick(self, e):
 
 ---
 
+## 操作服务插件事件(`AbstractOperationServicePlugIn`,Plan 7.3)
+
+挂在 `<FormOperation>` 内的 `<ServicePlugins>` 节点(跟 form / list 插件是**完全不同的挂载点** — service plugin 是 operation-level,跟着某个具体 FormOperation 走)。通过 `k3cloud_add_custom_operation(pyBody=..., pluginClassName=...)` 工具 inline 注册 — **没有单独的 register_service_plugin 工具**。继承 `Kingdee.BOS.Core.DynamicForm.PlugIn.AbstractOperationServicePlugIn`(反编译 11 个 virtual 方法 + Python 路径走 `PythonOperationServicePlugIn`,2026-05-11)。
+
+**何时用 service plugin** vs **form plugin**:
+- **service plugin**:绑定到具体 operation,**只在那个按钮被触发时执行**。典型场景:点"反审核"按钮跑反审核校验。挂载点 `<FormOperation><ServicePlugins>`。
+- **form plugin**:挂表单全局,所有 operation 都通过 BeforeDoOperation / AfterDoOperation 路径监听。典型场景:跨多按钮共享逻辑(信用额度任何操作前都校验)。挂载点 `<Form><FormPlugins>`。
+- **两个都挂等于跑两次** — 按场景二选一。
+
+客户实战 2 项目频次(`SS.PCB.ServicesPlugin` + `JSJXCloud.Plugin.Service`):
+
+### `OnPreparePropertys(self, e)` 🟢 **36**(服务插件最高频)
+- 触发:操作执行前,准备业务对象需要 Load 的属性集合
+- 常用:声明本操作需要读哪些字段(BOS 默认只 load 标准字段,自定义字段需 explicit append `e.FieldKeys.Add("F_PAIJ_X")`)
+- `e.Cancel`:**不支持**
+
+```python
+def OnPreparePropertys(self, e):
+    e.FieldKeys.Add("F_PAIJ_Custom1")
+    e.FieldKeys.Add("F_PAIJ_Custom2")
+```
+
+### `BeginOperationTransaction(self, e)` 🟢 (28)
+- 触发:**事务开始时**(每一批操作单据进入事务前)
+- `e.DataEntitys` — 本次操作的所有数据对象数组
+- 常用:批量校验/反写关联单据(在同一事务内)
+- `e.Cancel`:**支持**(取消整个操作)
+
+```python
+def BeginOperationTransaction(self, e):
+    for bill in e.DataEntitys:
+        if bill["FTotalAmount"] > 100000:
+            self._add_error(bill, u"金额超 10 万需主管审核")
+```
+
+### `BeforeExecuteOperationTransaction(self, e)` 🟢 (10)
+- 触发:事务**即将执行核心动作**(默认动作之前)
+- 常用:在默认核心动作之前注入逻辑(典型:审核前修字段)
+- `e.Cancel`:**支持**
+
+### `OnAddValidators(self, e)` 🟢 (8)
+- 触发:验证器集合装配时
+- 常用:注册自定义 `IValidator` 到 `e.Validators`,让 BOS 引擎在验证阶段调用
+- 跟 `IValidator.Validate(self, ctx)` 配合,**Validate 是 IValidator 接口的方法**(客户实战 7 处)
+
+### `EndOperationTransaction(self, e)` 🟢 (1)
+- 触发:事务**结束时**(标准动作完成后)
+- 常用:成功后副作用(写日志/触发下一步操作链)
+- `e.Cancel`:**不支持**(事务已结束)
+
+### `AfterExecuteOperationTransaction(self, e)` 🟡
+- 类似 EndOperationTransaction,但触发更早(标准动作完成,事务还在)
+
+### `OnPrepareOperationServiceOption(self, e)` 🟡
+- 触发:服务选项配置时(在最早期),可以改 `e.OperationServiceOption`
+- 常用:控制本次操作是否需要事务/锁/校验等元行为
+
+### `BeforeDoSaveExecute(self, e)` 🟡
+- 触发:保存类操作的前置 hook(特定于 Save 操作)
+- `e.Cancel`:支持
+
+### `RollbackData(self, e)` 🔴
+- 触发:事务回滚时
+- 常用:回滚副作用(已发送的通知/已变更的外部状态)
+
+### `AfterExecuteValidate(self, e)` 🟡
+- 触发:验证器执行完毕后(在 BeginOperationTransaction 前)
+
+### `InitializeOperationResult(self, result)` 🔴
+- 触发:OperationResult 对象初始化时
+- 常用:挂自定义 result 字段
+
+### IValidator 路径(客户实战 7 处) 🟢
+
+ServicePlugin 通过 `OnAddValidators` 注册的 IValidator 类有自己的 `Validate(self, ctx)` 方法:
+
+```python
+from Kingdee.BOS.Core.Validation import AbstractValidator
+
+class CustomCreditValidator(AbstractValidator):
+    def Validate(self, dataEntities, validateContext, ctx):
+        for de in dataEntities:
+            # custom validation logic
+            pass
+```
+
+由 ServicePlugin 的 `OnAddValidators` 注册:`e.Validators.Add(CustomCreditValidator())`。
+
+---
+
 ## 找不到的事件 → 查反编译
 
 如果客户需求映射不到上述 30 个事件,完整列表(115 + 19 = 134 个 virtual 方法)需查:
