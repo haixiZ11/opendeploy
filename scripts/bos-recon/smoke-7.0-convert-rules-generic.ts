@@ -23,13 +23,13 @@
  * Exits non-zero on first failure to surface broken cases fast.
  */
 import { readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import {
   K3CloudConnector,
   setBundledConvertRuleTemplate,
 } from '../../src/main/erp/k3cloud/connector';
+import type { Project } from '@shared/erp-types';
 
 // tsx (Node ESM) 不识别 .xml `?raw` 加载,先 fs 注入再走 connector 任何调用链
 setBundledConvertRuleTemplate(
@@ -39,20 +39,20 @@ setBundledConvertRuleTemplate(
   ),
 );
 
-const DEFAULT_RULES = [
-  'SaleOrder-OutStock', // regression: v0.1 supported rule, must still work
-  'PurchaseOrder-InStock', // canonical non-SaleOrder rule
-];
+// 默认只跑 SaleOrder-OutStock 回归 — 其他 ruleId 在不同 K/3 数据中心可能不存在,
+// 让用户按需传命令行参数验证多对(参数中的 ruleId 必须在目标服务器上真实存在)。
+const DEFAULT_RULES = ['SaleOrder-OutStock'];
 
 const args = process.argv.slice(2).filter((a) => a.trim() !== '');
 const rules = args.length > 0 ? args : DEFAULT_RULES;
 
-const projectsPath = join(homedir(), '.opendeploy', 'projects.json');
-let projects: Array<{ id: string; bos?: unknown }>;
+const settingsPath = resolve(homedir(), '.opendeploy/settings.json');
+let projects: Project[];
 try {
-  projects = JSON.parse(await readFile(projectsPath, 'utf-8'));
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+  projects = Array.isArray(settings.projects) ? settings.projects : [];
 } catch (err) {
-  console.error(`✗ cannot read ${projectsPath}: ${err instanceof Error ? err.message : String(err)}`);
+  console.error(`✗ cannot read ${settingsPath}: ${err instanceof Error ? err.message : String(err)}`);
   console.error('  configure a project first via the app, or set OPENDEPLOY_PROJECT_ID to skip lookup');
   process.exit(1);
 }
@@ -67,7 +67,7 @@ if (!project || !project.bos) {
   process.exit(1);
 }
 
-const connector = new K3CloudConnector(project.bos as never, project.id);
+const connector = new K3CloudConnector(project.bos, project.id);
 await connector.connect();
 console.log(`✓ connected to ${(project.bos as { baseUrl: string }).baseUrl} (project=${project.id})\n`);
 

@@ -91,13 +91,15 @@ export function buildPatchBaseXml(args: BuildPatchBaseXmlArgs): string {
 
   // Plan 7.0 通用化:本规则的 source/target FormId 注入。模板的 <SourceFormId> /
   // <TargetFormId> 内容写在 <ConvertRule> 顶层(在 <Policies> 之前),正则锚点唯一。
-  if (sourceFormId !== undefined) {
+  // 用 `!= null` 同时跳过 null 和 undefined — caller 可能把 RawConvertRule
+  // 字段直接传过来,顶层 SourceFormId 在某些规则下是 null(由 Rule.SourceFormId 兜底)。
+  if (sourceFormId != null) {
     xml = xml.replace(
       /<SourceFormId>[^<]*<\/SourceFormId>/,
       `<SourceFormId>${escapeXml(sourceFormId)}</SourceFormId>`,
     );
   }
-  if (targetFormId !== undefined) {
+  if (targetFormId != null) {
     xml = xml.replace(
       /<TargetFormId>[^<]*<\/TargetFormId>/,
       `<TargetFormId>${escapeXml(targetFormId)}</TargetFormId>`,

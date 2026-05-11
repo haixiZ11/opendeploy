@@ -625,11 +625,12 @@ export class K3CloudConnector implements ErpConnector {
         // version metadata stays null; future patch ops will refetch
       }
       const templateXml = await loadConvertRuleTemplate();
+      // SourceFormId 顶层有时为 null(server 没填),Rule.SourceFormId 必填兜底。
       const patchBaseXml = buildPatchBaseXml({
         templateXml,
         newExtensionId: result.newExtensionId,
         displayName: displayName ?? '转换规则',
-        sourceFormId: live.SourceFormId,
+        sourceFormId: live.SourceFormId ?? live.Rule.SourceFormId,
         targetFormId: live.Rule.TargetFormId,
       });
       await saveConvertRuleExtState(this.projectId, {
