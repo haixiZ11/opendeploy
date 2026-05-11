@@ -35,6 +35,11 @@ Most "AI assistant tools" today look like this:
 </p>
 
 <p align="center">
+  <img src="./assets/skills.gif" alt="OpenDeploy skills knowledge base" width="720" />
+  <br/><sub>Skills knowledge base — implementation methodology and BOS references loaded on demand</sub>
+</p>
+
+<p align="center">
   <img src="./assets/case.gif" alt="OpenDeploy real customization" width="720" />
   <br/><sub>Real customization end-to-end — business request to applied BOS extension</sub>
 </p>
