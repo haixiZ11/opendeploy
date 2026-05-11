@@ -98,4 +98,18 @@ k3cloud_list_extensions         # 查父单据有无现成扩展可复用
 
 挂表单还是列表看用户需求:**用户在单据录入页要触发的逻辑** → 表单插件;**用户在列表页要触发的逻辑**(典型:列表自定义按钮、列表双击行) → 列表插件。挂错位置插件**不触发**。
 
+### 典型联动:**列表按钮 + 列表插件**
+
+客户最常见的列表二开需求是"在列表上加自定义按钮触发批量逻辑"(memory `reference_customer_k3_plugin_projects` 实战:`AfterBarItemClick` 17 处)。完整步骤:
+
+```
+1. k3cloud_add_custom_operation         # 创建自定义操作 (operationId=45,挂 servicePlugin 可选)
+2. k3cloud_add_toolbar_button           # target.kind='list' 挂列表菜单
+   └─ target: { kind: 'list' }
+3. k3cloud_register_list_python_plugins # 写 AfterBarItemClick 实现按钮行为
+   └─ 内部判 e.BarItemKey 分发到具体逻辑
+```
+
+`target.kind` 选错(挂到 form 顶层菜单),客户在列表页看不到按钮 —— 不报错但功能等同没生效。
+
 两条路之后都要**提醒用户**:BOS Designer F5 刷新 / 客户端重登测试。OpenDeploy 不自动刷缓存。
