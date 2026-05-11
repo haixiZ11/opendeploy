@@ -13,12 +13,15 @@ import {
   type SaveConvertRulesResult,
 } from './save-convert-rules';
 import type { KdSession } from './http-client';
-import { DEFAULT_LOCALE_SLOTS, type ConvertRuleBaseline } from './convert-rule-baselines';
-import { getConvertRule } from './convert-rules';
+import { DEFAULT_LOCALE_SLOTS } from './convert-rule-baselines';
 import { newCompactGuid } from './dcxml';
 
 export interface ExtendConvertRuleArgs {
-  baseline: ConvertRuleBaseline;
+  /**
+   * Origin rule paras — caller builds via `buildOriginParas(live)` from a live
+   * `getConvertRule(originRuleId)` response. Plan 7.0 通用化:不再依赖静态 baseline。
+   */
+  originParas: ConvertRuleParas;
   isv: IsvDescriptor;
   /** zh-CN extension name shown in BOS Designer. Defaults to `转换规则`. */
   displayName?: string;
@@ -31,26 +34,6 @@ export interface ExtendConvertRuleResult extends SaveConvertRulesResult {
 }
 
 /**
- * Server-side modify check requires `paras.Version` / `MainVersion` to match
- * the rule's current state — stale values cause the server to silently
- * create an independent duplicate rule instead of recognizing the modify.
- * `MainVersion` ticks up on every save, so the values frozen into our
- * baseline are wrong as soon as anyone saves the standard rule on the
- * customer's server. Re-read the live values right before each save.
- */
-async function liveOriginParas(
-  session: KdSession,
-  baseline: ConvertRuleBaseline,
-): Promise<ConvertRuleParas> {
-  const live = await getConvertRule(session, baseline.originParas.Id);
-  return {
-    ...baseline.originParas,
-    Version: live.Version ?? baseline.originParas.Version,
-    MainVersion: live.MainVersion ?? baseline.originParas.MainVersion,
-  };
-}
-
-/**
  * Minimal "origin envelope" — declares the rule's Id+Key and resets Status,
  * but doesn't carry the full rule body. Sending the cached 100KB origin XML
  * triggers a server-side modify of the standard rule using whatever fields
@@ -60,8 +43,13 @@ async function liveOriginParas(
  * shape lets the server treat the entry as "no-op presence" — enough to
  * anchor the new extension's lineage via `oldIds`, without rewriting the
  * standard rule's body.
+ *
+ * Exported for callers that need to build envelopes outside this module
+ * (Plan 7.0: connector.patchExtXml uses this so the patch flow's origin
+ * envelope matches the extend flow's shape — was previously sending the
+ * full 100KB baseline.originXml, see `connector.ts:patchExtXml`).
  */
-function buildMinimalOriginXml(originRuleId: string): string {
+export function buildMinimalOriginXml(originRuleId: string): string {
   return (
     '<?xml version="1.0" encoding="utf-16"?>' +
     '<ConvertRuleMetaData><Rule><ConvertRule ElementType="6000" ElementStyle="0">' +
@@ -72,13 +60,10 @@ function buildMinimalOriginXml(originRuleId: string): string {
   );
 }
 
-function originEnvelope(
-  baseline: ConvertRuleBaseline,
-  paras: ConvertRuleParas,
-): ConvertRuleEnvelope {
+function originEnvelope(paras: ConvertRuleParas): ConvertRuleEnvelope {
   return {
     localeSlots: DEFAULT_LOCALE_SLOTS,
-    source: buildMinimalOriginXml(baseline.originParas.Id),
+    source: buildMinimalOriginXml(paras.Id),
     paras,
   };
 }
@@ -125,8 +110,7 @@ export async function extendConvertRule(
   session: KdSession,
   args: ExtendConvertRuleArgs,
 ): Promise<ExtendConvertRuleResult> {
-  const { baseline, isv, displayName } = args;
-  const originParas = await liveOriginParas(session, baseline);
+  const { originParas, isv, displayName } = args;
   const newExtensionId = newCompactGuid();
   const effectiveName = displayName ?? '转换规则';
   const newExtEnv: ConvertRuleEnvelope = {
@@ -134,22 +118,22 @@ export async function extendConvertRule(
     source: buildMinimalExtensionXml(newExtensionId, effectiveName),
     paras: buildNewExtensionParas({
       newRuleId: newExtensionId,
-      baseObjectId: baseline.originParas.Id,
+      baseObjectId: originParas.Id,
       isv,
       displayName: effectiveName,
     }),
   };
 
   const result = await saveConvertRules(session, {
-    rules: [originEnvelope(baseline, originParas), newExtEnv],
-    oldIds: [baseline.originParas.Id],
+    rules: [originEnvelope(originParas), newExtEnv],
+    oldIds: [originParas.Id],
     isv,
   });
   return { ...result, newExtensionId, extensionXml: newExtEnv.source };
 }
 
 export interface DeleteConvertRuleExtensionArgs {
-  baseline: ConvertRuleBaseline;
+  originParas: ConvertRuleParas;
   extId: string;
   isv: IsvDescriptor;
 }
@@ -158,11 +142,10 @@ export async function deleteConvertRuleExtension(
   session: KdSession,
   args: DeleteConvertRuleExtensionArgs,
 ): Promise<SaveConvertRulesResult> {
-  const { baseline, extId, isv } = args;
-  const originParas = await liveOriginParas(session, baseline);
+  const { originParas, extId, isv } = args;
   return saveConvertRules(session, {
-    rules: [originEnvelope(baseline, originParas)],
-    oldIds: [baseline.originParas.Id, extId],
+    rules: [originEnvelope(originParas)],
+    oldIds: [originParas.Id, extId],
     isv,
   });
 }

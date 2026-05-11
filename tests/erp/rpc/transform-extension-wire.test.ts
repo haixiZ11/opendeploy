@@ -82,7 +82,7 @@ describe('transformPatchedToExtensionWire', () => {
     const patched = makePatchedXml({
       defaultPolicyContent: '<FieldMaps><FieldMap ElementType="60002"><TargetFieldKey>F_NEW</TargetFieldKey><Id>new-fm</Id></FieldMap></FieldMaps>',
     });
-    const out = transformPatchedToExtensionWire({ patchedXml: patched, originXml: ORIGIN_XML });
+    const out = transformPatchedToExtensionWire({ patchedXml: patched, oidByElementType: parsePolicyOidMap(ORIGIN_XML) });
     // DefaultConvertPolicy survives with action+oid
     expect(out).toContain('<DefaultConvertPolicy action="edit" oid="oid-default"');
     expect(out).toContain('F_NEW');
@@ -97,7 +97,7 @@ describe('transformPatchedToExtensionWire', () => {
       defaultPolicyContent: '<FieldMaps><FieldMap><TargetFieldKey>F_X</TargetFieldKey><Id>fm-x</Id></FieldMap></FieldMaps>',
       pluginPolicyContent: '<Plugs><PlugIn><ClassName>my_plugin</ClassName><Id>plug-1</Id></PlugIn></Plugs>',
     });
-    const out = transformPatchedToExtensionWire({ patchedXml: patched, originXml: ORIGIN_XML });
+    const out = transformPatchedToExtensionWire({ patchedXml: patched, oidByElementType: parsePolicyOidMap(ORIGIN_XML) });
     expect(out).toContain('<DefaultConvertPolicy action="edit" oid="oid-default"');
     expect(out).toContain('<ConvertPlugInPolicy action="edit" oid="oid-plugin"');
     expect(out).toContain('F_X');
@@ -111,7 +111,7 @@ describe('transformPatchedToExtensionWire', () => {
       statusOpen: '<Status>True</Status>',
       defaultPolicyContent: '<FieldMaps><FieldMap><Id>x</Id></FieldMap></FieldMaps>',
     });
-    const out = transformPatchedToExtensionWire({ patchedXml: patched, originXml: ORIGIN_XML });
+    const out = transformPatchedToExtensionWire({ patchedXml: patched, oidByElementType: parsePolicyOidMap(ORIGIN_XML) });
     expect(out).toContain('<Status action="reset" />');
     expect(out).not.toMatch(/<Status>True<\/Status>/);
   });
@@ -121,7 +121,7 @@ describe('transformPatchedToExtensionWire', () => {
       statusOpen: '<Status />',
       defaultPolicyContent: '<FieldMaps><FieldMap><Id>x</Id></FieldMap></FieldMaps>',
     });
-    const out = transformPatchedToExtensionWire({ patchedXml: patched, originXml: ORIGIN_XML });
+    const out = transformPatchedToExtensionWire({ patchedXml: patched, oidByElementType: parsePolicyOidMap(ORIGIN_XML) });
     expect(out).toContain('<Status action="reset" />');
   });
 
@@ -129,8 +129,8 @@ describe('transformPatchedToExtensionWire', () => {
     const patched = makePatchedXml({
       defaultPolicyContent: '<FieldMaps><FieldMap><Id>x</Id></FieldMap></FieldMaps>',
     });
-    const once = transformPatchedToExtensionWire({ patchedXml: patched, originXml: ORIGIN_XML });
-    const twice = transformPatchedToExtensionWire({ patchedXml: once, originXml: ORIGIN_XML });
+    const once = transformPatchedToExtensionWire({ patchedXml: patched, oidByElementType: parsePolicyOidMap(ORIGIN_XML) });
+    const twice = transformPatchedToExtensionWire({ patchedXml: once, oidByElementType: parsePolicyOidMap(ORIGIN_XML) });
     // Re-running on already-transformed wire should not double-add action attrs
     const actionCount = (twice.match(/action="edit"/g) ?? []).length;
     expect(actionCount).toBe(1);
@@ -148,7 +148,7 @@ describe('transformPatchedToExtensionWire', () => {
     </DefaultConvertPolicy>
   </Policies>
 </ConvertRule>`;
-    const out = transformPatchedToExtensionWire({ patchedXml: patched, originXml: ORIGIN_XML });
+    const out = transformPatchedToExtensionWire({ patchedXml: patched, oidByElementType: parsePolicyOidMap(ORIGIN_XML) });
     // Policy passes through unchanged (no action/oid injected)
     expect(out).toContain('<DefaultConvertPolicy ElementType="9999"');
     expect(out).not.toContain('action="edit"');
@@ -167,7 +167,7 @@ describe('transformPatchedToExtensionWire', () => {
     </DefaultConvertPolicy>
   </Policies>
 </ConvertRule>`;
-    const out = transformPatchedToExtensionWire({ patchedXml: patched, originXml: ORIGIN_XML });
+    const out = transformPatchedToExtensionWire({ patchedXml: patched, oidByElementType: parsePolicyOidMap(ORIGIN_XML) });
     // FuturePolicy stays untouched
     expect(out).toContain('<FuturePolicy ElementType="99999"');
     // DefaultConvertPolicy still gets the action+oid treatment

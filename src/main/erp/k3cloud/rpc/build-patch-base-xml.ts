@@ -58,6 +58,14 @@ export interface BuildPatchBaseXmlArgs {
   newExtensionId: string;
   /** Display name shown in BOS Designer's tree. */
   displayName: string;
+  /**
+   * Plan 7.0 通用化:当模板是通用 Policy 骨架(`convert-rule-extension-template.xml`)
+   * 而非规则专属 capture 时,运行时替换 `<SourceFormId>` 为本规则的源单据 FormId。
+   * 不传则保留模板原值(向后兼容旧 SaleOrder-OutStock 专属 capture)。
+   */
+  sourceFormId?: string;
+  /** Plan 7.0:同 sourceFormId,替换 `<TargetFormId>`。 */
+  targetFormId?: string;
 }
 
 /**
@@ -77,9 +85,24 @@ export interface BuildPatchBaseXmlArgs {
  *      `newExtensionId` we registered with the server in `SaveRulesV9`.
  */
 export function buildPatchBaseXml(args: BuildPatchBaseXmlArgs): string {
-  const { templateXml, newExtensionId, displayName } = args;
+  const { templateXml, newExtensionId, displayName, sourceFormId, targetFormId } = args;
 
   let xml = regenerateGuidsInXml(templateXml);
+
+  // Plan 7.0 通用化:本规则的 source/target FormId 注入。模板的 <SourceFormId> /
+  // <TargetFormId> 内容写在 <ConvertRule> 顶层(在 <Policies> 之前),正则锚点唯一。
+  if (sourceFormId !== undefined) {
+    xml = xml.replace(
+      /<SourceFormId>[^<]*<\/SourceFormId>/,
+      `<SourceFormId>${escapeXml(sourceFormId)}</SourceFormId>`,
+    );
+  }
+  if (targetFormId !== undefined) {
+    xml = xml.replace(
+      /<TargetFormId>[^<]*<\/TargetFormId>/,
+      `<TargetFormId>${escapeXml(targetFormId)}</TargetFormId>`,
+    );
+  }
 
   xml = xml.replace(/<FieldMaps>[\s\S]*?<\/FieldMaps>/g, '<FieldMaps />');
 

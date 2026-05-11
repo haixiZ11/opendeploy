@@ -144,6 +144,56 @@ describe('buildPatchBaseXml', () => {
     ).toThrow(/cannot locate rule-level Name\/Id\/Key/);
   });
 
+  // ─── Plan 7.0 通用化:接受任意 SourceFormId / TargetFormId ──────────
+  // v0.1 时 baseline XML 是 SaleOrder→OutStock 专属 capture(<SourceFormId>SAL_SaleOrder</SourceFormId>
+  // 写死)。通用化路径是让 buildPatchBaseXml 接受可选参数,运行时替换这两个字段;
+  // Policy 骨架本身对所有规则通用(10 个 Policy 类型 + 内部 Name/Id/ElementType
+  // schema 一致),不必派生。
+
+  it('Plan 7.0: replaces <SourceFormId> when sourceFormId is provided', () => {
+    const xml = buildPatchBaseXml({
+      templateXml: FIXTURE_TEMPLATE,
+      newExtensionId: 'newexta1b2c3d4e5f60718293a4b5c6d7e8',
+      displayName: 'X',
+      sourceFormId: 'PUR_PurchaseOrder',
+    });
+    expect(xml.includes('<SourceFormId>PUR_PurchaseOrder</SourceFormId>')).toBe(true);
+    expect(xml.includes('<SourceFormId>SAL_SaleOrder</SourceFormId>')).toBe(false);
+  });
+
+  it('Plan 7.0: replaces <TargetFormId> when targetFormId is provided', () => {
+    const xml = buildPatchBaseXml({
+      templateXml: FIXTURE_TEMPLATE,
+      newExtensionId: 'newexta1b2c3d4e5f60718293a4b5c6d7e8',
+      displayName: 'X',
+      targetFormId: 'STK_InStock',
+    });
+    expect(xml.includes('<TargetFormId>STK_InStock</TargetFormId>')).toBe(true);
+    expect(xml.includes('<TargetFormId>SAL_OUTSTOCK</TargetFormId>')).toBe(false);
+  });
+
+  it('Plan 7.0: leaves SourceFormId / TargetFormId untouched when params absent (backward compat)', () => {
+    const xml = buildPatchBaseXml({
+      templateXml: FIXTURE_TEMPLATE,
+      newExtensionId: 'newexta1b2c3d4e5f60718293a4b5c6d7e8',
+      displayName: 'X',
+    });
+    expect(xml.includes('<SourceFormId>SAL_SaleOrder</SourceFormId>')).toBe(true);
+    expect(xml.includes('<TargetFormId>SAL_OUTSTOCK</TargetFormId>')).toBe(true);
+  });
+
+  it('Plan 7.0: escapes special chars in formIds (defensive — formIds are normally ASCII)', () => {
+    const xml = buildPatchBaseXml({
+      templateXml: FIXTURE_TEMPLATE,
+      newExtensionId: 'newexta1b2c3d4e5f60718293a4b5c6d7e8',
+      displayName: 'X',
+      sourceFormId: 'A&B',
+      targetFormId: 'C<D>',
+    });
+    expect(xml).toContain('<SourceFormId>A&amp;B</SourceFormId>');
+    expect(xml).toContain('<TargetFormId>C&lt;D&gt;</TargetFormId>');
+  });
+
   it('handles template without <Name> (Name node optional in capture)', () => {
     // Some captured templates omit the rule-level <Name>; the regex must
     // still match Id/Key alone after </Policies>.

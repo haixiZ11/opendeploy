@@ -62,10 +62,12 @@ import {
   type ExtendConvertRuleResult,
 } from './rpc/extend-convert-rule';
 import {
+  DEFAULT_LOCALE_SLOTS,
   UnsupportedConvertRuleError,
   type ConvertRuleBaseline,
-  DEFAULT_LOCALE_SLOTS,
 } from './rpc/convert-rule-baselines';
+import { buildOriginParas } from './rpc/build-origin-paras';
+import { buildMinimalOriginXml } from './rpc/extend-convert-rule';
 import { getCurrentIsv } from './rpc/get-current-isv';
 import {
   buildModifyExtensionParas,
@@ -81,7 +83,11 @@ import {
   convertRuleExtStatePath,
 } from './rpc/convert-rule-state';
 import { buildPatchBaseXml } from './rpc/build-patch-base-xml';
-import { transformPatchedToExtensionWire } from './rpc/transform-extension-wire';
+import {
+  transformPatchedToExtensionWire,
+  parsePolicyOidMapFromLive,
+} from './rpc/transform-extension-wire';
+import convertRuleExtensionTemplateXml from './rpc/baselines/convert-rule-extension-template.xml?raw';
 import { saveExtension, saveExtensionRaw, type SaveExtensionRawMeta } from './rpc/save-for-ide';
 import { extractLayoutInfoOid } from './rpc/layout-discovery';
 import { extractExistingExtensionElements } from './rpc/existing-elements';
@@ -554,7 +560,10 @@ export class K3CloudConnector implements ErpConnector {
     displayName?: string,
   ): Promise<ExtendConvertRuleResult> {
     const session = this.requireSession();
-    const baseline = this.requireBaseline('extendConvertRule', originRuleId);
+
+    // Plan 7.0 通用化:从 live `getConvertRule` 取 originParas + form ids,
+    // 替代 v0.1 SaleOrder-OutStock 专属静态 baseline。
+    const live = await getConvertRule(session, originRuleId);
 
     // Single-layer-tree guard — mirror the form-extension rule for convert
     // rules. BOS server happily creates a second sibling extension under
@@ -578,8 +587,9 @@ export class K3CloudConnector implements ErpConnector {
       }
     }
 
+    const originParas = buildOriginParas(live);
     const isv = await this.getIsv(session);
-    const result = await rpcExtendConvertRule(session, { baseline, isv, displayName });
+    const result = await rpcExtendConvertRule(session, { originParas, isv, displayName });
     // Persist state so subsequent patch operations have a base XML to work with.
     //
     // The wire `result.extensionXml` is the 275-byte minimal body the server
@@ -607,9 +617,11 @@ export class K3CloudConnector implements ErpConnector {
         // version metadata stays null; future patch ops will refetch
       }
       const patchBaseXml = buildPatchBaseXml({
-        templateXml: baseline.extensionTemplateXml,
+        templateXml: convertRuleExtensionTemplateXml,
         newExtensionId: result.newExtensionId,
         displayName: displayName ?? '转换规则',
+        sourceFormId: live.SourceFormId,
+        targetFormId: live.Rule.TargetFormId,
       });
       await saveConvertRuleExtState(this.projectId, {
         extId: result.newExtensionId,
@@ -636,26 +648,38 @@ export class K3CloudConnector implements ErpConnector {
   ): Promise<SaveConvertRulesResult> {
     if (!this.projectId) throw new Error('connector not created with a projectId — cannot access ext state');
     const state = await loadConvertRuleExtState(this.projectId, extId);
-    const baseline = this.requireBaseline(op, state.originRuleId);
     const session = this.requireSession();
+
+    // Plan 7.0 通用化:每次 patch 从 live 拿 origin info(取代 v0.1 baseline 字典)。
+    // 同时把 origin envelope source 改为 minimal shape(跟 extendConvertRule 一致),
+    // 避免发 100KB 完整 origin 触发 silent flip(Status/IsDefault) — 见
+    // extend-convert-rule.ts buildMinimalOriginXml 注释。
+    const live = await getConvertRule(session, state.originRuleId);
+    const oidByElementType = parsePolicyOidMapFromLive(live.Rule.Policies);
+    const originParas = buildOriginParas(live);
+
     const [isv, bridge] = await Promise.all([this.getIsv(session), getBridge()]);
     const { xml: patchedXml } = await bridge.send<{ xml: string }>(op, { xml: state.xml, ...bridgeArgs });
 
     const wireXml = transformPatchedToExtensionWire({
       patchedXml,
-      originXml: baseline.originXml,
+      oidByElementType,
     });
 
     const result = await saveConvertRules(session, {
       rules: [
-        { localeSlots: DEFAULT_LOCALE_SLOTS, source: baseline.originXml, paras: baseline.originParas },
+        {
+          localeSlots: DEFAULT_LOCALE_SLOTS,
+          source: buildMinimalOriginXml(state.originRuleId),
+          paras: originParas,
+        },
         {
           localeSlots: DEFAULT_LOCALE_SLOTS,
           source: wireXml,
           paras: buildModifyExtensionParas({ extId, baseObjectId: state.originRuleId, isv }),
         },
       ],
-      oldIds: [baseline.originParas.Id, extId],
+      oldIds: [state.originRuleId, extId],
       isv,
     });
 
@@ -797,9 +821,11 @@ export class K3CloudConnector implements ErpConnector {
     extId: string,
   ): Promise<SaveConvertRulesResult> {
     const session = this.requireSession();
-    const baseline = this.requireBaseline('deleteConvertRuleExtension', originRuleId);
+    // Plan 7.0 通用化:live originParas 替代静态 baseline。
+    const live = await getConvertRule(session, originRuleId);
+    const originParas = buildOriginParas(live);
     const isv = await this.getIsv(session);
-    const result = await rpcDeleteConvertRuleExtension(session, { baseline, extId, isv });
+    const result = await rpcDeleteConvertRuleExtension(session, { originParas, extId, isv });
     // Drop the local state file too — otherwise listConvertRuleExtsByOrigin
     // keeps reporting the dead extId as if it still exists, and the
     // single-layer-tree guard refuses to create a fresh extension.

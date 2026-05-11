@@ -49,31 +49,32 @@ const SAMPLE_BASELINE: ConvertRuleBaseline = buildSaleOrderOutStockBaseline({
 });
 
 /**
- * The new `extendConvertRule` issues two RPC calls per save:
- *   1. `GetConvertRule(originRuleId)` to read live `Version` / `MainVersion`
- *   2. `SaveRulesV9` with the assembled envelope
+ * Plan 7.0: caller (connector) builds `originParas` from a live
+ * `getConvertRule` response via `buildOriginParas(live)` and passes it in.
+ * The rpc layer no longer fetches live values; it just relays what the
+ * caller supplied. These tests reflect the new contract by providing
+ * originParas with the LIVE_* values already merged in.
+ */
+const SAMPLE_ORIGIN_PARAS = {
+  ...SAMPLE_BASELINE.originParas,
+  Version: LIVE_VERSION,
+  MainVersion: LIVE_MAIN_VERSION,
+};
+
+/**
+ * The refactored `extendConvertRule` / `deleteConvertRuleExtension` now issue
+ * exactly one RPC: `SaveRulesV9`. (The previous Plan 5.12.4 v2 contract did
+ * its own live `GetConvertRule` call; under Plan 7.0 that responsibility
+ * moved up to the connector so any rule's paras can be built from live state.)
  *
- * The mock returns canned `Version` / `MainVersion` for #1 and captures
- * the ap0 payload sent to #2.
+ * The mock captures the ap0 payload sent to `SaveRulesV9`.
  */
 function captureSavePayload(): {
   capturedAp0: { value: string };
   fetchSpy: typeof fetch;
 } {
   const capturedAp0 = { value: '' };
-  const fetchSpy = (async (url: string, init?: RequestInit) => {
-    if (url.includes('GetConvertRule')) {
-      return new Response(
-        encodeAppLayer(
-          JSON.stringify({
-            Id: 'SaleOrder-OutStock',
-            Version: LIVE_VERSION,
-            MainVersion: LIVE_MAIN_VERSION,
-            Rule: { Policies: [] },
-          }),
-        ),
-      );
-    }
+  const fetchSpy = (async (_url: string, init?: RequestInit) => {
     const params = new URLSearchParams(String(init?.body ?? ''));
     capturedAp0.value = params.get('ap0') ?? '';
     return new Response(encodeAppLayer(''));
@@ -91,7 +92,7 @@ describe('extendConvertRule', () => {
     globalThis.fetch = fetchSpy;
 
     const result = await extendConvertRule(session, {
-      baseline: SAMPLE_BASELINE,
+      originParas: SAMPLE_ORIGIN_PARAS,
       isv: UNW_ISV,
     });
 
@@ -122,7 +123,7 @@ describe('extendConvertRule', () => {
     const { capturedAp0, fetchSpy } = captureSavePayload();
     globalThis.fetch = fetchSpy;
 
-    await extendConvertRule(session, { baseline: SAMPLE_BASELINE, isv: UNW_ISV });
+    await extendConvertRule(session, { originParas: SAMPLE_ORIGIN_PARAS, isv: UNW_ISV });
 
     const outer = JSON.parse(decodeAppLayerString(capturedAp0.value));
     const rule0 = JSON.parse(outer.__rules__[0]);
@@ -140,7 +141,7 @@ describe('extendConvertRule', () => {
     const { capturedAp0, fetchSpy } = captureSavePayload();
     globalThis.fetch = fetchSpy;
 
-    await extendConvertRule(session, { baseline: SAMPLE_BASELINE, isv: UNW_ISV });
+    await extendConvertRule(session, { originParas: SAMPLE_ORIGIN_PARAS, isv: UNW_ISV });
 
     const outer = JSON.parse(decodeAppLayerString(capturedAp0.value));
     const paras0 = JSON.parse(JSON.parse(outer.__rules__[0]).__paras__);
@@ -153,7 +154,7 @@ describe('extendConvertRule', () => {
     globalThis.fetch = fetchSpy;
 
     const result = await extendConvertRule(session, {
-      baseline: SAMPLE_BASELINE, isv: UNW_ISV, displayName: '我的扩展',
+      originParas: SAMPLE_ORIGIN_PARAS, isv: UNW_ISV, displayName: '我的扩展',
     });
 
     const outer = JSON.parse(decodeAppLayerString(capturedAp0.value));
@@ -176,7 +177,7 @@ describe('extendConvertRule', () => {
     const { capturedAp0, fetchSpy } = captureSavePayload();
     globalThis.fetch = fetchSpy;
 
-    await extendConvertRule(session, { baseline: SAMPLE_BASELINE, isv: UNW_ISV });
+    await extendConvertRule(session, { originParas: SAMPLE_ORIGIN_PARAS, isv: UNW_ISV });
 
     const outer = JSON.parse(decodeAppLayerString(capturedAp0.value));
     const paras1 = JSON.parse(JSON.parse(outer.__rules__[1]).__paras__);
@@ -187,7 +188,7 @@ describe('extendConvertRule', () => {
     const { capturedAp0, fetchSpy } = captureSavePayload();
     globalThis.fetch = fetchSpy;
 
-    await extendConvertRule(session, { baseline: SAMPLE_BASELINE, isv: UNW_ISV });
+    await extendConvertRule(session, { originParas: SAMPLE_ORIGIN_PARAS, isv: UNW_ISV });
 
     const outer = JSON.parse(decodeAppLayerString(capturedAp0.value));
     const topIsv = JSON.parse(outer.__isv__);
@@ -203,7 +204,7 @@ describe('extendConvertRule', () => {
     const { capturedAp0, fetchSpy } = captureSavePayload();
     globalThis.fetch = fetchSpy;
 
-    await extendConvertRule(session, { baseline: SAMPLE_BASELINE, isv: UNW_ISV });
+    await extendConvertRule(session, { originParas: SAMPLE_ORIGIN_PARAS, isv: UNW_ISV });
 
     const outer = JSON.parse(decodeAppLayerString(capturedAp0.value));
     const rule0 = JSON.parse(outer.__rules__[0]);
@@ -217,7 +218,7 @@ describe('extendConvertRule', () => {
     globalThis.fetch = fetchSpy;
 
     await extendConvertRule(session, {
-      baseline: SAMPLE_BASELINE,
+      originParas: SAMPLE_ORIGIN_PARAS,
       isv: UNW_ISV,
       displayName: '我的扩展',
     });
@@ -240,7 +241,7 @@ describe('deleteConvertRuleExtension', () => {
     globalThis.fetch = fetchSpy;
 
     const result = await deleteConvertRuleExtension(session, {
-      baseline: SAMPLE_BASELINE,
+      originParas: SAMPLE_ORIGIN_PARAS,
       extId: 'fe6154fe-7144-4633-97e9-601f65135ae9',
       isv: UNW_ISV,
     });
@@ -257,7 +258,7 @@ describe('deleteConvertRuleExtension', () => {
     globalThis.fetch = fetchSpy;
 
     await deleteConvertRuleExtension(session, {
-      baseline: SAMPLE_BASELINE,
+      originParas: SAMPLE_ORIGIN_PARAS,
       extId: 'some-ext',
       isv: UNW_ISV,
     });

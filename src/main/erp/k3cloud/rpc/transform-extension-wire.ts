@@ -47,6 +47,44 @@
  *      so we don't synthesize those here.
  */
 
+import type { RawPolicy } from './convert-rules';
+
+/**
+ * Plan 7.0: `___InstClassType__` suffix → ElementType (wire-format constant).
+ * Verified against `baselines/sale-order-outstock-origin.xml` Policy children
+ * (2026-05-11). These are BOS-internal numeric constants — same across all
+ * ConvertRules regardless of source/target form, so the table covers any rule.
+ */
+const POLICY_ELEMENT_TYPE_BY_CLASS_SUFFIX: ReadonlyArray<readonly [string, string]> = [
+  ['DefaultConvertPolicyElement', '7002'],
+  ['ConvertPlugInPolicyElement', '7003'],
+  ['ConvertFilterPolicyElement', '7004'],
+  ['ConvertGroupByPolicyElement', '7005'],
+  ['ConvertFormBusinessPolicyElement', '7006'],
+  ['LinkEntityPolicyElement', '7008'],
+  ['BillTypeMapPolicyElement', '7009'],
+  ['ConvertOrderByPolicyElement', '7010'],
+  ['ConvertAttachmentPolicyElement', '60003'],
+  ['ConvertTailDiffPolicyElement', '60006'],
+];
+
+/**
+ * Plan 7.0: build the same Map shape as `parsePolicyOidMap(originXml)` but
+ * from the live `getConvertRule` JSON response — no XML parsing needed.
+ * Skips Policies without an Id or with an unrecognized class suffix.
+ */
+export function parsePolicyOidMapFromLive(policies: RawPolicy[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const p of policies) {
+    const cls = (p.___InstClassType__ as string | undefined) ?? '';
+    const match = POLICY_ELEMENT_TYPE_BY_CLASS_SUFFIX.find(([suffix]) => cls.endsWith(suffix));
+    if (!match) continue;
+    if (!p.Id) continue;
+    map.set(match[1], p.Id);
+  }
+  return map;
+}
+
 /**
  * Top-level Policy element names we know how to handle. Names not in this
  * list pass through unchanged; this protects against accidentally munging
@@ -93,8 +131,13 @@ const POLICY_NODE_RE = /<(\w+Policy)\s+([^>]*?)>([\s\S]*?)<\/\1>/g;
 export interface TransformExtensionWireArgs {
   /** XML returned by the .NET bridge after applying patch ops. */
   patchedXml: string;
-  /** Parent rule's full XML — used to look up each Policy's oid. */
-  originXml: string;
+  /**
+   * ElementType (as string, e.g. `"7002"`) → parent Policy oid map. Caller
+   * builds this from either the parent rule's full XML via `parsePolicyOidMap`
+   * (used by tests / legacy capture flows) or from the live JSON response of
+   * `getConvertRule` via `parsePolicyOidMapFromLive` (Plan 7.0 通用化路径).
+   */
+  oidByElementType: Map<string, string>;
 }
 
 /**
@@ -129,8 +172,7 @@ export function parsePolicyOidMap(originXml: string): Map<string, string> {
 export function transformPatchedToExtensionWire(
   args: TransformExtensionWireArgs,
 ): string {
-  const { patchedXml, originXml } = args;
-  const oidByElementType = parsePolicyOidMap(originXml);
+  const { patchedXml, oidByElementType } = args;
 
   let xml = patchedXml;
 
