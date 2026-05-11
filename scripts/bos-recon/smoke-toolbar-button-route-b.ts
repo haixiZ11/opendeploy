@@ -104,7 +104,6 @@ ok(`logged in as ${loginResult.userName}`);
 
 const connector = new K3CloudConnector(
   { baseUrl, acctId, username, password, devCode },
-  {},
   projectId,
 );
 await connector.connect();

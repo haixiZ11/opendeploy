@@ -64,6 +64,26 @@ import {
 import { DEFAULT_LOCALE_SLOTS } from './rpc/convert-rule-baselines';
 import { buildOriginParas } from './rpc/build-origin-paras';
 import { buildMinimalOriginXml } from './rpc/extend-convert-rule';
+
+/**
+ * Plan 7.0:通用 convert-rule extension template(`convert-rule-extension-template.xml`)
+ * 在 Vite 路径下通过 `?raw` import 进来,在 tsx scripts 下 Node ESM 不识别 .xml
+ * 扩展名。隔离在 `./rpc/baselines/bundled-template.ts`,dynamic import 处理
+ * Vite 路径;scripts 走 `setBundledConvertRuleTemplate(fs.readFileSync(...))`
+ * 提前注入,避免触发 dynamic import 链路。
+ */
+let _bundledConvertRuleTemplateXml: string | null = null;
+
+export function setBundledConvertRuleTemplate(xml: string): void {
+  _bundledConvertRuleTemplateXml = xml;
+}
+
+async function loadConvertRuleTemplate(): Promise<string> {
+  if (_bundledConvertRuleTemplateXml) return _bundledConvertRuleTemplateXml;
+  const mod = await import('./rpc/baselines/bundled-template');
+  _bundledConvertRuleTemplateXml = mod.bundledConvertRuleTemplate;
+  return _bundledConvertRuleTemplateXml;
+}
 import { getCurrentIsv } from './rpc/get-current-isv';
 import {
   buildModifyExtensionParas,
@@ -83,7 +103,6 @@ import {
   transformPatchedToExtensionWire,
   parsePolicyOidMapFromLive,
 } from './rpc/transform-extension-wire';
-import convertRuleExtensionTemplateXml from './rpc/baselines/convert-rule-extension-template.xml?raw';
 import { saveExtension, saveExtensionRaw, type SaveExtensionRawMeta } from './rpc/save-for-ide';
 import { extractLayoutInfoOid } from './rpc/layout-discovery';
 import { extractExistingExtensionElements } from './rpc/existing-elements';
@@ -605,8 +624,9 @@ export class K3CloudConnector implements ErpConnector {
       } catch {
         // version metadata stays null; future patch ops will refetch
       }
+      const templateXml = await loadConvertRuleTemplate();
       const patchBaseXml = buildPatchBaseXml({
-        templateXml: convertRuleExtensionTemplateXml,
+        templateXml,
         newExtensionId: result.newExtensionId,
         displayName: displayName ?? '转换规则',
         sourceFormId: live.SourceFormId,
