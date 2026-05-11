@@ -177,14 +177,32 @@ def BeforeSave(self, e):
 - `e.Status` — 目标状态
 - `e.Cancel`:`Before` 支持
 
-### 审核 / 反审核 / 弃审
-**表单插件拿不到**。这些拦截需要**操作插件**(`T_META_OPERATESERVICEPLUGIN`),OpenDeploy v0.1 不支持。
+### 审核 / 反审核 / 弃审拦截 (两条路径都通)
 
-遇到用户要求"审核时校验",告知:
-> "审核拦截需要操作插件,当前 OpenDeploy 工具链不支持。建议:
-> 1. 在 BOS Designer 手工注册 C# 操作插件
-> 2. 或者把校验时机改到'保存前',保存通过即意味着合规
-> 3. 未来 OpenDeploy v0.2+ 会覆盖操作插件"
+OpenDeploy v0.1 已实证支持两种姿势,挑哪个看场景:
+
+**A. Form plugin 路径(推荐用于内置操作:Audit / UnAudit / Delete / Submit)**
+
+用 `register_python_plugins` 挂 form plugin,在 `BeforeDoOperation(self, e)` 里判 `e.Operation.OperationName == "UnAudit"` 等,设 `e.Cancel = True` 拦截。最常见。
+
+```python
+class UnAuditBlocker(AbstractDynamicFormPlugIn):
+    def BeforeDoOperation(self, e):
+        if e.Operation.OperationName == "UnAudit":
+            amount = self.Model.GetValue("FEndAmount")
+            if amount and amount > 100000:
+                e.Cancel = True
+                raise KDException("OPD-001", u"金额 > 10 万不允许直接反审核")
+```
+
+**B. Service plugin 路径(推荐用于自定义操作 inline)**
+
+`add_custom_operation(pluginClassName=..., pyBody=...)` 一次性建 operation + inline ServicePlugin,逻辑挂在 `BeginOperationTransaction` / `OnAddValidators` 等服务端事件。优点:校验在服务端事务上下文执行,跨调用方一致(WebAPI / REST / 移动端调同一 operation 都跑)。
+
+选 A 还是 B:
+- **内置操作** + 单纯客户端拦截 → A(轻量,UI 弹窗友好)
+- **自定义操作** + 一段 inline 逻辑 → B(跟操作生命周期绑死)
+- 跨多操作共享 / 涉及服务端事务一致性 → B
 
 ---
 

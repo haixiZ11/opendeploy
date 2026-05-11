@@ -154,7 +154,20 @@ export function addCustomOperationTool(c: K3CloudConnector): ToolHandler {
           pyBody: {
             type: 'string',
             description:
-              '可选，IronPython 2.7 源码，含必要 `import` + 类定义。inline 到该操作的 ServicePlugins。指定时必须同时指定 `pluginClassName`。'
+              '可选，IronPython 2.7 源码，含必要 `import` + 类定义。inline 到该操作的 ServicePlugins。指定时必须同时指定 `pluginClassName`。' +
+              '\n\n**⚠️ 基类强制要求**:pyBody 内的类**必须**继承 `AbstractOperationServicePlugIn` (`from Kingdee.BOS.Core.DynamicForm.PlugIn import AbstractOperationServicePlugIn`),override 服务端事件如 `BeginOperationTransaction(self, e)` / `OnAddValidators(self, e)` / `OnPreparePropertys(self, e)`。' +
+              '\n**禁止使用 `AbstractDynamicFormPlugIn` / `AbstractBillPlugIn`** + 它们的 `AfterDoOperation` / `BeforeDoOperation` 事件 — 那些是 form plugin 端的,挂到 ServicePlugins 节点服务端不会调用,脚本不会触发(看似落库其实无效)。' +
+              '\n\n最小模板:\n' +
+              '```python\n' +
+              "import clr\nclr.AddReference('Kingdee.BOS')\nclr.AddReference('Kingdee.BOS.Core')\n" +
+              'from Kingdee.BOS.Core.DynamicForm.PlugIn import AbstractOperationServicePlugIn\n' +
+              'from Kingdee.BOS.Core.DynamicForm.PlugIn.Args import *\n\n' +
+              'class MyOpService(AbstractOperationServicePlugIn):\n' +
+              '    def BeginOperationTransaction(self, e):\n' +
+              '        for de in e.DataEntitys:\n' +
+              '            # 你的逻辑\n' +
+              '            pass\n' +
+              '```'
           },
           operationObjectKey: {
             type: 'string',
