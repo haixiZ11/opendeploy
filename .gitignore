@@ -60,6 +60,9 @@ tmp/
 # 项目内部协作资料(不对外发布)
 CLAUDE.md
 
+# 内部协作资料(plans/specs/recon/architecture/blog 全部本地保留,不对外发布,跟 CLAUDE.md 同性质)
+docs/
+
 # 设计探索 / logo 迭代草稿(实验性,不进版本控制)
 design/
 
