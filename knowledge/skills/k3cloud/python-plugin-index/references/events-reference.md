@@ -321,6 +321,70 @@ def BeforeF7Select(self, e):
 
 ---
 
+---
+
+## 列表插件事件(`AbstractListPlugIn`,Plan 7.2)
+
+挂在 `<ListPlugins>` 节点,通过 `k3cloud_register_list_python_plugins` 工具注册。继承 `Kingdee.BOS.Core.List.PlugIn.AbstractListPlugIn`(反编译 28 个 virtual 方法,2026-05-11)。
+
+客户实战 2 项目频次(`SS.PCB.ListPlugin` + `JSJXCloud.Plugin.List`):
+
+### `AfterBarItemClick(self, e)` 🟢 **17**(列表最高频)
+- 触发:列表工具栏按钮点击后
+- `e.BarItemKey` — 按钮 Key
+- 常用:自定义按钮触发批量操作 / 导出 / 弹自定义页
+- `e.Cancel`:**不支持**
+
+```python
+def AfterBarItemClick(self, e):
+    if e.BarItemKey == "tbCustExport":
+        self._do_custom_export()
+```
+
+### `BarItemClick(self, e)` 🟢 (4)
+- 触发:列表工具栏按钮点击前
+- `e.Cancel`:**支持**(可阻止默认行为)
+
+### `EntryButtonCellClick(self, e)` 🟢 (3)
+- 触发:列表行内按钮单元格点击
+- `e.RowIndex, e.Key`
+- 常用:行级操作(行详情 / 行级动作)
+
+### `PrepareFilterParameter(self, e)` 🟢 (2)
+- 触发:查询参数装配前(过滤条件 / 排序条件被读取)
+- 常用:动态注入过滤条件(基于当前用户 / 组织 / 时间)
+- `e.FilterString` / `e.OrderString` — 可赋值
+
+### `ListRowDoubleClick(self, e)` 🟢 (2)
+- 触发:双击列表行(默认行为是打开单据)
+- 常用:覆盖默认打开行为 / 自定义跳转
+- `e.Cancel`:**支持**(阻止默认打开)
+
+### `FormatCellValue(self, e)` 🟢 (2)
+- 触发:单元格显示格式化前
+- `e.RowIndex, e.Key, e.OriginalValue`
+- `e.FormatValue` — 可赋值,改单元格显示文本
+- 常用:染色 / 改显示 / 隐藏敏感字段
+
+### `AfterDoOperation(self, e)` 🟢 (1)
+- 触发:列表操作(审核 / 反审核 / 删除 / 自定义操作)执行后
+- `e.OperateKey, e.OperationResult`
+
+### `BeforeSaveImportData(self, e)` 🟢 (1)
+- 触发:列表导入数据保存前
+- `e.Cancel`:**支持**
+
+### `AfterBindData(self, e)` 🟢 (1)
+- 触发:列表数据绑定后(列表本身也有 BindData 生命周期)
+
+### 其他反编译可用但实战未见 🟡 / 🔴
+
+`ListInitialize / OnGetConvertRule / OnShowConvertOpForm / OnShowTrackResult / OnTargetBillChanged / CellFormat / CellDbClick / ListCreateColumns / CreateListHeader / BatchCopyData / AfterBatchCopyData / BeforeMenuClick / AfterMenuClick / OnFormatRowConditions / ReplaceEntityTable / BeforeButtonClick / AfterButtonClick / AfterGetData / BeforeFilterSchemeChanged / FormatCellValue / CreateFilterEditorControl / PrepareFuncPermissionDataRule / AfterCreateSqlBuilderParameter / AfterCreateFilterField / BeforeGetDataForTempTableAccess / EntryHyperlinkButtonClick / ListRowDoubleClick`
+
+按需反编译 `D:\K3Cloud\WebSite\Bin\Kingdee.BOS.Core.dll` 取精确签名。
+
+---
+
 ## 找不到的事件 → 查反编译
 
 如果客户需求映射不到上述 30 个事件,完整列表(115 + 19 = 134 个 virtual 方法)需查:

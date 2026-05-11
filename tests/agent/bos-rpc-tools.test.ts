@@ -171,6 +171,7 @@ describe('buildBosRpcTools', () => {
       'k3cloud_delete_extension',
       'k3cloud_delete_tab_control',
       'k3cloud_delete_tab_page',
+      'k3cloud_register_list_python_plugins',
       'k3cloud_register_python_plugins',
       'k3cloud_rename_entry',
       'k3cloud_rename_tab_control',

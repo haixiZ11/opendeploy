@@ -33,6 +33,9 @@ export interface ExistingExtensionElements {
   appearances: string[];
   /** Raw `<PlugIn>...</PlugIn>` chunks (CDATA-preserved). */
   plugins: string[];
+  /** Plan 7.2:List 插件的 `<PlugIn>...</PlugIn>` chunks(CDATA-preserved)。
+   *  跟 FormPlugins 平级在 `<Form>` 节点下,baseline-diff 同样要求。 */
+  listPlugins: string[];
   // ─── Plan 5.14 — entry / tab-page / tab-control raw chunks ──────────
   // Same baseline-diff requirement: every Save must include all the
   // extension's existing entries / tabs verbatim or BOS treats them as
@@ -151,6 +154,7 @@ export function extractExistingExtensionElements(
     fields: [],
     appearances: [],
     plugins: [],
+    listPlugins: [],
     entries: [],
     entryAppearances: [],
     tabPages: [],
@@ -164,6 +168,7 @@ export function extractExistingExtensionElements(
 
   const fields: string[] = [];
   const plugins: string[] = [];
+  const listPlugins: string[] = [];
   const appearances: string[] = [];
   const entries: string[] = [];
   const entryAppearances: string[] = [];
@@ -190,6 +195,15 @@ export function extractExistingExtensionElements(
           for (const op of iterateDepth1Children(formOpsBody)) {
             if (op.tag === 'FormOperation' && !op.raw.endsWith('/>')) {
               formOperations.push(op.raw);
+            }
+          }
+        }
+        // Plan 7.2:抓 ListPlugins baseline(跟 FormPlugins 平级,wire 实证)
+        const listPluginsBody = findFirstBlockBody(child.raw, 'ListPlugins', 'ListPlugins');
+        if (listPluginsBody) {
+          for (const plug of iterateDepth1Children(listPluginsBody)) {
+            if (plug.tag === 'PlugIn') {
+              listPlugins.push(restoreCdataInChunk(plug.raw, values));
             }
           }
         }
@@ -259,5 +273,6 @@ export function extractExistingExtensionElements(
     tabControls,
     formOperations,
     headEntity,
+    listPlugins,
   };
 }

@@ -84,6 +84,9 @@ function renderFormRoot(
   existingPluginsRaw: string[] | undefined,
   formOperations: BosFormOperationElement[] | undefined,
   existingFormOperationsRaw: string[] | undefined,
+  /** Plan 7.2:List 插件(挂到 `<Form><ListPlugins>`,跟 FormPlugins 平级)。 */
+  listPlugins?: BosPluginElement[] | undefined,
+  existingListPluginsRaw?: string[] | undefined,
 ): void {
   out.push(`<Form action="edit" oid="BOS_BillModel" ElementType="100" ElementStyle="0">`);
   out.push(`<Id>${formId}</Id>`);
@@ -111,6 +114,16 @@ function renderFormRoot(
     if (hasExisting) for (const raw of existingPluginsRaw!) out.push(raw);
     if (hasNew) for (const p of plugins!) renderPluginElement(out, p);
     out.push(`</FormPlugins>`);
+  }
+  // Plan 7.2:ListPlugins 紧跟 FormPlugins(同一 <Form> 内,wire 实证
+  // saleorder_parent.xml)。复用 renderPluginElement(schema 完全一致)。
+  const hasExistingList = existingListPluginsRaw && existingListPluginsRaw.length > 0;
+  const hasNewList = listPlugins && listPlugins.length > 0;
+  if (hasExistingList || hasNewList) {
+    out.push(`<ListPlugins>`);
+    if (hasExistingList) for (const raw of existingListPluginsRaw!) out.push(raw);
+    if (hasNewList) for (const p of listPlugins!) renderPluginElement(out, p);
+    out.push(`</ListPlugins>`);
   }
   out.push(`</Form>`);
 }
@@ -721,6 +734,8 @@ export function buildDcxmlSource(req: SaveExtensionRequest): string {
     req.existingPluginsRaw,
     req.addFormOperations,
     req.existingFormOperationsRaw,
+    req.addListPlugins,
+    req.existingListPluginsRaw,
   );
   for (const raw of req.existingFieldsRaw ?? []) out.push(raw);
   for (const f of req.addFields ?? []) renderFieldElement(out, f);

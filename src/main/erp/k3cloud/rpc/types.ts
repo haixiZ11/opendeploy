@@ -548,6 +548,12 @@ export interface SaveExtensionRequest {
   /** Plugins to register on this Form. Rendered inside `<Form><FormPlugins>...`. */
   addPlugins?: BosPluginElement[];
   /**
+   * Plan 7.2:List 插件,挂到 List 元数据(SaleOrder 等单据父对象同时有 Form
+   * 和 List 两套元数据,List 插件挂 `<Form><ListPlugins><PlugIn>...`)。
+   * BosPluginElement schema 跟 Form 插件完全一致,wire 实证 saleorder_parent.xml。
+   */
+  addListPlugins?: BosPluginElement[];
+  /**
    * FormOperations to register on this Form. Rendered inside
    * `<Form><FormOperations>...`. Required for any toolbar button that
    * triggers a built-in row operation (新增行 / 删除行); the BarButton's
@@ -582,6 +588,8 @@ export interface SaveExtensionRequest {
   existingAppearancesRaw?: string[];
   /** Same baseline-diff requirement as existingFieldsRaw, for plugins. CDATA-preserved. */
   existingPluginsRaw?: string[];
+  /** Plan 7.2:List 插件 baseline,CDATA-preserved。同 Form 插件的差集语义。 */
+  existingListPluginsRaw?: string[];
   /** Same baseline-diff requirement, for EntryEntity elements. */
   existingEntriesRaw?: string[];
   /**

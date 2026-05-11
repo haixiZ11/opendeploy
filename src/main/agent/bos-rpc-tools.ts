@@ -86,6 +86,7 @@ export async function buildBosRpcTools(
     createExtensionTool(c, pid, sessionMgr),
     addFieldsTool(c, pid, sessionMgr),
     registerPythonPluginsTool(c, pid, sessionMgr),
+    registerListPythonPluginsTool(c, pid, sessionMgr),
     deleteExtensionTool(pid, sessionMgr),
     createEnumTypeTool(c, pid, sessionMgr),
     deleteEnumTypeTool(c, pid, sessionMgr),
@@ -230,6 +231,7 @@ async function loadExtensionForSave(
         fields: [],
         appearances: [],
         plugins: [],
+        listPlugins: [],
         entries: [],
         entryAppearances: [],
         tabPages: [],
@@ -360,6 +362,7 @@ function buildSaveRequest(
     | 'addFields'
     | 'addAppearances'
     | 'addPlugins'
+    | 'addListPlugins'
     | 'addEntries'
     | 'addEntryAppearances'
     | 'addTabPages'
@@ -381,6 +384,7 @@ function buildSaveRequest(
     existingFieldsRaw: existing.fields,
     existingAppearancesRaw: existing.appearances,
     existingPluginsRaw: existing.plugins,
+    existingListPluginsRaw: existing.listPlugins,
     existingEntriesRaw: existing.entries,
     existingEntryAppearancesRaw: existing.entryAppearances,
     existingTabPagesRaw: existing.tabPages,
@@ -1784,6 +1788,138 @@ function registerPythonPluginsTool(
           reminder:
             '所有插件已一次性挂到扩展。BOS Designer 工具栏点刷新即可在「表单插件」节点看到。' +
             '若用户报告新单据上插件未执行(罕见,登录方式相关),让用户关 K/3 Cloud 客户端重登清运行时缓存。',
+        },
+        null,
+        2,
+      );
+    },
+  };
+}
+
+// ─── k3cloud_register_list_python_plugins (Plan 7.2) ────────────────────
+//
+// 跟 register_python_plugins wire 形态完全一致(BosPluginElement schema 相同),
+// 只是 wrapper 从 `<FormPlugins>` 换成 `<ListPlugins>`(挂到列表元数据而非表单)。
+// wire 实证 .scratch/captures/manual/saleorder_parent.xml — 父对象 `<Form>`
+// 节点内 FormPlugins 后紧跟 ListPlugins。
+//
+// 客户实战 2 项目里 List 插件 override 频次:AfterBarItemClick(17) > BarItemClick(4)
+// > EntryButtonCellClick(3) > PrepareFilterParameter / ListRowDoubleClick /
+// FormatCellValue(各 2) > BeforeSaveImportData / AfterDoOperation / AfterBindData(各 1)。
+
+function registerListPythonPluginsTool(
+  connector: K3CloudConnector,
+  projectId: string,
+  sessionMgr: SessionMgrLike,
+): ToolHandler {
+  return {
+    definition: {
+      name: 'k3cloud_register_list_python_plugins',
+      description:
+        '一次性给已有 BOS 扩展批量挂 Python **列表**插件(写到扩展 `<Form>` 节点下的 `<ListPlugins>`,跟表单插件平级)。' +
+        '\n\n**与 `k3cloud_register_python_plugins` 的区别**:本工具挂的是**列表页**的插件 — 用户在列表里点按钮 / 双击行 / 切换过滤方案触发(基类 `AbstractListPlugIn`);' +
+        '表单插件(基类 `AbstractDynamicFormPlugIn` / `AbstractBillPlugIn`)挂的是**单据录入界面**事件。挂错位置插件不触发。' +
+        '\n\n**所有这次要挂的插件都放进 plugins 数组里,一个工具调用搞定** — BOS 服务端把每次 Save 当成扩展的"完整差异",拆多次调用会让前面挂的插件消失。' +
+        '本工具内部读现有列表插件并合入。' +
+        '\n\n何时用(典型场景):' +
+        '\n- 列表自定义按钮事件:用户在列表点工具栏自定义按钮触发逻辑(典型:`AfterBarItemClick` — 客户实战最高频)' +
+        '\n- 列表行双击:`ListRowDoubleClick`,双击行打开自定义页面 / 跳转' +
+        '\n- 单元格格式化:`FormatCellValue`,根据规则染色 / 改显示' +
+        '\n- 过滤参数定制:`PrepareFilterParameter`,在查询前注入额外条件' +
+        '\n\n每个 plugin 的字段:' +
+        '\n- `className`:插件标识,小写蛇形,例 `list_export_validator` / `list_double_click_handler`' +
+        '\n- `pyBody`:完整 IronPython 2.7 源码,含 `from Kingdee.BOS.Core.List.PlugIn import AbstractListPlugIn` + 继承类。脚本内随便用特殊字符,工具 CDATA 包裹。' +
+        '\n\n**写入后**:用户在 BOS Designer 工具栏点刷新即可在「列表插件」节点看到。',
+      parameters: {
+        type: 'object',
+        properties: {
+          extId: {
+            type: 'string',
+            description: '扩展 FID(32 位 hex GUID,无连字符)。',
+          },
+          plugins: {
+            type: 'array',
+            minItems: 1,
+            description:
+              '本次保存里要挂的所有 Python 列表插件。原子提交。再要挂更多就再调一次本工具(传新的进 plugins,旧的会自动保留)。',
+            items: {
+              type: 'object',
+              properties: {
+                className: {
+                  type: 'string',
+                  description: '插件类名 / 标识,推荐小写蛇形,例 "list_export_validator"。',
+                },
+                pyBody: {
+                  type: 'string',
+                  description:
+                    'IronPython 2.7 完整源码,含 `from Kingdee.BOS.Core.List.PlugIn import AbstractListPlugIn` + 继承 AbstractListPlugIn 的类定义。',
+                },
+              },
+              required: ['className', 'pyBody'],
+            },
+          },
+        },
+        required: ['extId', 'plugins'],
+      },
+    },
+    async execute(args) {
+      const extId = String(args.extId ?? '').trim();
+      if (!extId) throw new Error('k3cloud_register_list_python_plugins 需要 extId 参数。');
+      const rawPlugins = args.plugins;
+      if (!Array.isArray(rawPlugins) || rawPlugins.length === 0) {
+        throw new Error('k3cloud_register_list_python_plugins 需要 plugins 参数(至少一个的数组)。');
+      }
+      const pluginArgsList: PluginArgs[] = rawPlugins.map((raw, i) =>
+        coercePluginArgs((raw ?? {}) as Record<string, unknown>, i),
+      );
+      rejectDuplicates(pluginArgsList, (p) => p.className, 'plugins 的 className');
+
+      const { ext, project, layoutInfoOid, existing } = await loadExtensionForSave(
+        connector,
+        projectId,
+        extId,
+        'k3cloud_register_list_python_plugins',
+      );
+
+      const newPlugins: BosPluginElement[] = pluginArgsList.map((p) => ({
+        className: p.className,
+        type: 'python',
+        pyScript: p.pyBody,
+      }));
+
+      const req = buildSaveRequest(ext, project, layoutInfoOid, existing, {
+        addListPlugins: newPlugins,
+      });
+
+      const session = await sessionMgr.getOrLogin(projectId);
+      const result = await saveExtensionRpc(session, req);
+
+      if (!result.isSuccess) {
+        return JSON.stringify(
+          {
+            ok: false,
+            extId,
+            attemptedClassNames: pluginArgsList.map((p) => p.className),
+            messageTitle: result.messageTitle,
+            messageDetail: result.messageDetail,
+          },
+          null,
+          2,
+        );
+      }
+
+      return JSON.stringify(
+        {
+          ok: true,
+          extId,
+          addedCount: newPlugins.length,
+          plugins: pluginArgsList.map((p) => ({
+            className: p.className,
+            scriptLength: p.pyBody.length,
+          })),
+          reminder:
+            '所有列表插件已一次性挂到扩展。BOS Designer 工具栏点刷新即可在「列表插件」节点看到。' +
+            '客户端进列表才触发(不是单据录入页) — 用户报告"没生效"先确认是在列表页测试。',
         },
         null,
         2,

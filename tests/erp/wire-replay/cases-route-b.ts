@@ -121,6 +121,28 @@ export const ROUTE_B_CASES: RouteBCase[] = [
   },
 
   {
+    name: 'register-list-plugin-fresh-extension',
+    whyMatters:
+      'Plan 7.2 — register_list_python_plugins wire shape. Same BosPluginElement ' +
+      'schema as Form plugins but wrapped in <ListPlugins> instead of <FormPlugins>. ' +
+      'Capture-verified saleorder_parent.xml: ListPlugins sits inside <Form> sibling ' +
+      'to FormPlugins. This case locks the wrapper-name diff so future refactors do ' +
+      'not silently re-route List plugins into the FormPlugins collection.',
+    input: {
+      extension: BASELINE_EXT,
+      isNew: true,
+      layoutInfoOid: 'fresh-ext-layout-oid',
+      addListPlugins: [
+        {
+          type: 'python',
+          className: 'list_export_validator',
+          pyScript: '#list plugin\npass',
+        },
+      ],
+    },
+  },
+
+  {
     name: 'add-toolbar-button-form-level',
     whyMatters:
       'Lever 3 followup (2026-05-07) — addToolbarButton migrated from Route C ' +
