@@ -475,6 +475,70 @@ class CustomCreditValidator(AbstractValidator):
 
 ---
 
+## 账表插件事件(`AbstractSysReportPlugIn` + `AbstractSysReportServicePlugIn`,Plan 7.4)
+
+挂在 **SysReport metaobject**(独立元数据,不是 BillForm 子节点)。Python 走 `PythonReportPlugIn`(反编译实证存在)。
+
+**v0.1 限制**:OpenDeploy 当前**只能 extension 已有对象**,不能创建新 SysReport。客户需求"建一个销售汇总账表"必须先在 BOS Designer 手工建账表元数据,然后 OpenDeploy 才能挂插件 / 加自定义按钮。**完整账表自动化等 Plan 7.5(创建新对象)落地后整合**。
+
+两类基类(反编译 2026-05-11):
+
+### `AbstractSysReportPlugIn`(UI 端,16 个 virtual 方法)
+负责账表展示 / 交互 / 单元格格式化。常用事件:
+- `ReportInitialize(self, e)` — 账表实例化(最早期 hook)
+- `AfterBindData(self, e)` 🟢 (3) — 数据绑定后(类似单据)
+- `BeforeButtonClick / AfterButtonClick(self, e)` — 按钮点击前/后
+- `CellClick / CellDbClick(self, e)` — 单元格点击/双击
+- `CellFormat / FormatCellValue(self, e)` — 单元格格式化 / 显示值改写
+- `PrepareFilterParameter(self, e)` — 过滤参数装配(查询前注入额外条件)
+- `OnFormatRowConditions(self, e)` — 行级条件格式
+- `CreateFilterEditorControl` / `BeforeFilterSchemeChanged` / `BeforeCreateDynamicList`
+- `AfterGetData / AfterGetAllPageDataSet` — 取数后 hook
+- `BeforeBuildExcelSheet / AfterBuildExportReportTitle` — 导出 Excel hook
+
+### `AbstractSysReportServicePlugIn`(服务端,5 个 virtual 方法)
+**最关键**:负责拼 SQL 取数。客户实战这块最高频:
+- `BuilderReportSqlAndTempTable(self, e)` 🟢 **6**(账表最高频) — **构造 SQL + 写临时表**,核心 hook
+- `Initialize(self, e)` 🟢 (4) — 服务端实例化
+- `CloseReport(self, e)` 🟢 (3) — 关闭账表清理
+- `CloseReportInstance(self, e)` — 关单实例
+- `DropTempTable(self, e)` — 删临时表(配合 BuilderReportSqlAndTempTable)
+
+典型 BuilderReportSqlAndTempTable 模板:
+
+```python
+def BuilderReportSqlAndTempTable(self, e):
+    filter = e.Filter
+    # 从过滤条件取值
+    start_date = filter.GetValue("FStartDate")
+    end_date = filter.GetValue("FEndDate")
+    org_id = filter.GetValue("FOrgId").Id
+
+    sql = u"""
+    SELECT FOrderID, FCustID, FAllAmount
+    INTO #{0}
+    FROM T_SAL_ORDERENTRY
+    WHERE FOrgID = {1}
+      AND FDate BETWEEN '{2}' AND '{3}'
+    """.format(e.ReportTempTableName, org_id, start_date, end_date)
+
+    DBUtils.Execute(self.Context, sql)
+```
+
+`e.ReportTempTableName` 是 BOS 注入的临时表名,所有数据写进去,BOS 后续 UI 端从这表 select。
+
+### 创建账表的 wire(待 7.5 落地)
+
+`<SysReport>` metaobject 创建需要:
+- `T_META_OBJECTTYPE` 加新对象(modelTypeId=待反编译,猜测 110-130)
+- `T_META_FORMOPERATION` 注册 BarItem(查询按钮)
+- FKERNELXML 含 `<SysReport>` 元数据(`<DataSource>` + `<Filters>` + `<Columns>` + 可选 `<ReportPlugins>`)
+- 菜单注册(若要在客户端菜单可见)
+
+具体 wire 在 7.5 推进时再 capture 实证。
+
+---
+
 ## 找不到的事件 → 查反编译
 
 如果客户需求映射不到上述 30 个事件,完整列表(115 + 19 = 134 个 virtual 方法)需查:

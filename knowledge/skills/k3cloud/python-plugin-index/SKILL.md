@@ -8,13 +8,14 @@ category: plugin-dev
 
 # K/3 Cloud Python 插件开发索引
 
-本 skill 覆盖三类 K/3 Cloud Python 插件:
+本 skill 覆盖四类 K/3 Cloud Python 插件(三类已有工具,第四类待 Plan 7.5):
 
 | 类型 | wire 节点 | 基类 | 注册工具 | 触发时机 |
 |---|---|---|---|---|
 | **表单插件** | `<Form><FormPlugins>` | `AbstractBillPlugIn` / `AbstractDynamicFormPlugIn` | `k3cloud_register_python_plugins` | 用户进入**单据录入页**(新建/查看/修改单据) |
 | **列表插件**(Plan 7.2) | `<Form><ListPlugins>` | `AbstractListPlugIn` | `k3cloud_register_list_python_plugins` | 用户进入**列表页**(查列表/双击行/列表工具栏点按钮) |
 | **操作服务插件**(Plan 7.3) | `<FormOperation><ServicePlugins>` | `AbstractOperationServicePlugIn`(Python 走 `PythonOperationServicePlugIn`) | `k3cloud_add_custom_operation(pyBody=..., pluginClassName=...)` inline | 用户点**该具体操作按钮**(操作绑定 service plugin,跟单据生命周期解耦) |
+| **账表插件**(Plan 7.4,**待 7.5 创建对象工具落地后整合**) | 独立 SysReport metaobject | `AbstractSysReportPlugIn` + `AbstractSysReportServicePlugIn`(Python 走 `PythonReportPlugIn`) | ⚠️ v0.1 不能自动注册,需先在 BOS Designer 手工建账表 | 用户进入**账表页**(报表查询 / 单元格点击 / SQL 构造) |
 
 前两类挂在父对象 Form 下,操作服务插件挂在具体某个 FormOperation 内 — 跟着操作 key 走,只在那个操作触发时执行。
 
