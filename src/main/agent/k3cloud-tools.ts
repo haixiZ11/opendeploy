@@ -15,6 +15,7 @@ import {
   addToolbarButtonTool,
   deleteToolbarButtonTool
 } from './operation-tools';
+import { createFromTemplateTool } from './create-metaobject-tools';
 
 /**
  * Build the K/3 Cloud tool set for the current active project. Returns an
@@ -59,7 +60,8 @@ export function buildK3CloudTools(connector?: K3CloudConnector): ToolHandler[] {
     addCustomOperationTool(c),
     deleteOperationTool(c),
     addToolbarButtonTool(c),
-    deleteToolbarButtonTool(c)
+    deleteToolbarButtonTool(c),
+    createFromTemplateTool(c)
   ];
 }
 

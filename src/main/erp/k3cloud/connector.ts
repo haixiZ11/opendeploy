@@ -139,6 +139,10 @@ import {
 } from './rpc/appearance-locator';
 import { getBridge } from './bridge';
 import type { KdSession } from './rpc/http-client';
+import {
+  callCreateFromTemplate,
+  type CreateFromTemplateInput,
+} from './rpc/create-from-template';
 import type {
   BosRpcCredentials,
   ExtensionMeta,
@@ -1569,6 +1573,22 @@ export class K3CloudConnector implements ErpConnector {
         `删除按钮失败：${result.messageTitle ?? ''} ${result.messageDetail ?? '<no detail>'}`,
       );
     }
+  }
+
+  /**
+   * Create a new metaobject by inheriting from a BOS_* template via SaveForIDEV9.
+   *
+   * This follows the same wire path as BOS Designer "New Wizard → Template Inheritance"
+   * and is functionally identical to k3cloud_create_extension but points
+   * BaseObjectId at a BOS_* template instead of a business object.
+   *
+   * Plan 7.6 — see `rpc/create-from-template.ts` for DCXML envelope details.
+   */
+  async createFromTemplate(
+    input: Omit<CreateFromTemplateInput, 'mainVersion'>,
+  ) {
+    const session = this.requireSession();
+    return callCreateFromTemplate(session, { ...input, mainVersion: null });
   }
 
   /**

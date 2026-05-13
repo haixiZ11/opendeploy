@@ -1,11 +1,21 @@
 import { randomUUID } from 'node:crypto';
+import {
+  callKdsvc,
+  encodeApField,
+  encodeApFieldRaw,
+  applySetCookieToSession,
+  parseJsonResponse,
+  type KdSession,
+} from './http-client';
+
+const METADATA_SERVICE = 'Kingdee.BOS.ServiceFacade.ServicesStub.Metadata.MetadataService';
 
 export interface CreateFromTemplateInput {
   templateId: string;
   newFormId: string;
   name: string;
   subSystemId: string;
-  mainVersion: string;
+  mainVersion: string | null;
   layoutOid?: string;
   appearanceOid?: string;
 }
@@ -19,12 +29,41 @@ export interface CreateFromTemplateEnvelope {
         DevType: 0;
         ISVSignal: 'Kingdee';
         BaseObjectId: string;
-        MainVersion: string;
+        MainVersion: string | null;
         DomainModelType: number;
       };
       '2052': '';
     };
     ap1_dcxml: string;
+  };
+}
+
+export interface CreateFromTemplateResult {
+  isSuccess: boolean;
+  messageTitle: string | null;
+  messageDetail: string | null;
+}
+
+export async function callCreateFromTemplate(
+  session: KdSession,
+  input: CreateFromTemplateInput,
+): Promise<CreateFromTemplateResult> {
+  const envelope = buildCreateFromTemplateEnvelope(input);
+  const ap0Encoded = encodeApField(envelope.envelope.ap0);
+  const ap1Encoded = encodeApFieldRaw(envelope.envelope.ap1_dcxml);
+  const res = await callKdsvc(session, METADATA_SERVICE, 'SaveForIDEV9', {
+    apFields: { ap0: ap0Encoded, ap1: ap1Encoded },
+  });
+  applySetCookieToSession(session, res.setCookieHeaders);
+  const parsed = parseJsonResponse<{
+    IsSuccess: boolean;
+    MessageTitle: string | null;
+    MessageDetail: string | null;
+  }>(res.bodyText);
+  return {
+    isSuccess: parsed.IsSuccess,
+    messageTitle: parsed.MessageTitle,
+    messageDetail: parsed.MessageDetail,
   };
 }
 
