@@ -33,18 +33,18 @@
 | **L1–L4（防 BOS 出错杠杆，2026-05-07）** | 决策矩阵 doc / wire-replay 测试框架 / 收编 overlay / ESLint 护栏 | ✅ 全部 |
 | 5.14 | entry-support（EntryEntity / TabPage / TabControl × create+delete+rename = 9 工具 + entry-field 分支 + GetSequenceInt32 RPC + smoke-entry-lifecycle） | ✅ |
 | **6** | **打包发布 + Alpha Release**（skills 仓库 push + 一次性清缓存策略 + electron NSIS installer） | ✅（2026-05-09 v0.1.0-alpha.1 发到 GitHub Release） |
-| **7（v0.2 master）** | **BOS 覆盖面扩展 — v0.2 alpha 范围** — 7.0 转换规则通用化 ✅ / 7.1 表单插件事件参考扩到 30+ ✅ / 7.2 列表插件 + 列表菜单按钮 ✅ / 7.3 操作服务插件 events-reference + SKILL ✅ / 7.4 账表 knowledge bridge ✅(创建账表 blocked by Plan 8) / 7.5 → 拆 Plan 8。Master plan: `docs/plans/2026-05-11-plan-7-bos-coverage-expansion.md` | ✅(2026-05-11 全部完成,可发 v0.2 alpha) |
+| **7（v0.2 master）** | **BOS 覆盖面扩展 — v0.2 alpha 范围** — 7.0 转换规则通用化 ✅ / 7.1 表单插件事件参考扩到 30+ ✅ / 7.2 列表插件 + 列表菜单按钮 ✅ / 7.3 操作服务插件 events-reference + SKILL ✅ / 7.4 账表 knowledge bridge ✅(创建账表已被 7.6 解锁) / 7.5 → 拆 Plan 8。Master plan: `docs/plans/2026-05-11-plan-7-bos-coverage-expansion.md` | ✅(2026-05-11 全部完成,可发 v0.2 alpha) |
 | **7.6** | 创建 metaobject(模板继承，SysReport + BillForm + BaseDataForm) | ✅(2026-05-13，2 工具 + 1 skill + 5 层测试全过) |
 | **8（v0.3）** | 创建新 metaobject 高级子集 (DynamicForm + 树形/直接SQL/透视账表) | ⏳ 留 v0.3，Plan 7.6 反编译路线证明无需 user capture |
 
-**测试**：71 test files / 883 tests，全绿。lint clean。
+**测试**：73 test files / 883 tests，全绿。lint clean。
 
 ## 常用命令
 
 ```bash
 pnpm dev                 # Electron 开发模式
 pnpm build               # 生产构建 → out/
-pnpm test                # Vitest（869 tests）
+pnpm test                # Vitest（883 tests）
 pnpm typecheck           # tsc --noEmit
 pnpm lint                # ESLint flat config（含 BOS XML 护栏 L4）
 pnpm format              # Prettier
@@ -74,7 +74,7 @@ src/
 ├── shared/{types,llm-types}.ts                # 跨进程契约
 ├── main/
 │   ├── agent/{loop,tools,builtin-tools,skills-integration}.ts
-│   ├── agent/{k3cloud-tools,bos-rpc-tools,operation-tools,business-rule-tools}.ts  # 43 个 k3cloud_* tools
+│   ├── agent/{k3cloud-tools,bos-rpc-tools,operation-tools,business-rule-tools}.ts  # 33 个 k3cloud_* tools
 │   ├── agent/prompts/{base-system,erp-rules/k3cloud,active-project-tag,skills-catalog-intro}.md
 │   ├── erp/{types,active}.ts                  # ErpConnector 接口 + 活动项目单例
 │   ├── erp/k3cloud/connector.ts               # K3CloudConnector(BOS RPC)
@@ -95,7 +95,7 @@ bos-bridge/                                    # .NET 4.8 console
 ├── BosContext{,.BusinessRules,.Operations,.Reflection}.cs
 └── Program.cs                                 # NDJSON dispatcher (21 ops)
 
-tests/                                          # 71 files / 869 tests
+tests/                                          # 73 files / 883 tests
 └── erp/wire-replay/                            # L2 框架(__snapshots__/route-b/*)
 
 docs/
@@ -137,7 +137,7 @@ scripts/bos-recon/                              # 真服务器 smoke + agent-loo
 任何 BOS 写入 wire 改动都会撞这梯队的某层：
 
 1. **静态** — typecheck + ESLint（含 L4 BOS XML 护栏） — `pnpm typecheck && pnpm lint`，<30s
-2. **单元/快照** — Vitest 869 tests + 9 wire-replay snapshots（`tests/erp/wire-replay/`），5s。snapshot 漂移在 PR 显式 review
+2. **单元/快照** — Vitest 883 tests + wire-replay fixtures（`tests/erp/wire-replay/`，包含 5 个 Plan 7.6 新增），5s。snapshot 漂移在 PR 显式 review
 3. **Connector 集成** — mocked HTTP（`tests/erp/connector-bar-button-flow.test.ts` 等），抓 envelope F5（漏 `existingXxxRaw`）
 4. **真服务器 smoke**（手动）— `scripts/bos-recon/smoke-*.ts`，沙箱扩展真打 K/3 server + raw FKERNELXML 字节验证
 5. **真 LLM agent loop**（手动，发版前）— `scripts/bos-recon/drive-*.ts`，DeepSeek 自驱选 tool 编排顺序，~$0.005/run
