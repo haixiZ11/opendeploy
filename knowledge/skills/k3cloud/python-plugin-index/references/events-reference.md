@@ -495,9 +495,9 @@ class CustomCreditValidator(AbstractValidator):
 
 ## 账表插件事件(`AbstractSysReportPlugIn` + `AbstractSysReportServicePlugIn`,Plan 7.4)
 
-挂在 **SysReport metaobject**(独立元数据,不是 BillForm 子节点)。Python 走 `PythonReportPlugIn`(反编译实证存在)。
+挂在 **SysReport metaobject** 的 `<SysReportServicePlugins>` 节点(action="edit" 模式写入)。Python 走 `PythonReportPlugIn`(反编译实证存在)。
 
-**v0.1 限制**:OpenDeploy 当前**只能 extension 已有对象**,不能创建新 SysReport。客户需求"建一个销售汇总账表"必须先在 BOS Designer 手工建账表元数据,然后 OpenDeploy 才能挂插件 / 加自定义按钮。**完整账表自动化等 Plan 7.5(创建新对象)落地后整合**。
+v0.2 起可通过 `k3cloud_register_sysreport_python_plugins` 自动注册,无需在 BOS Designer 手工建账表。新建账表走 `k3cloud_create_from_template(templateId='BOS_SimpleSysReport', ...)`。
 
 两类基类(反编译 2026-05-11):
 
@@ -544,16 +544,6 @@ def BuilderReportSqlAndTempTable(self, e):
 ```
 
 `e.ReportTempTableName` 是 BOS 注入的临时表名,所有数据写进去,BOS 后续 UI 端从这表 select。
-
-### 创建账表的 wire(待 7.5 落地)
-
-`<SysReport>` metaobject 创建需要:
-- `T_META_OBJECTTYPE` 加新对象(modelTypeId=待反编译,猜测 110-130)
-- `T_META_FORMOPERATION` 注册 BarItem(查询按钮)
-- FKERNELXML 含 `<SysReport>` 元数据(`<DataSource>` + `<Filters>` + `<Columns>` + 可选 `<ReportPlugins>`)
-- 菜单注册(若要在客户端菜单可见)
-
-具体 wire 在 7.5 推进时再 capture 实证。
 
 ---
 

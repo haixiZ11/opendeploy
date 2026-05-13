@@ -8,20 +8,20 @@ category: plugin-dev
 
 # K/3 Cloud Python 插件开发索引
 
-本 skill 覆盖四类 K/3 Cloud Python 插件(三类已有工具,第四类待 Plan 7.5):
+本 skill 覆盖四类 K/3 Cloud Python 插件:
 
 | 类型 | wire 节点 | 基类 | 注册工具 | 触发时机 |
 |---|---|---|---|---|
 | **表单插件** | `<Form><FormPlugins>` | `AbstractBillPlugIn` / `AbstractDynamicFormPlugIn` | `k3cloud_register_python_plugins` | 用户进入**单据录入页**(新建/查看/修改单据) |
 | **列表插件**(Plan 7.2) | `<Form><ListPlugins>` | `AbstractListPlugIn` | `k3cloud_register_list_python_plugins` | 用户进入**列表页**(查列表/双击行/列表工具栏点按钮) |
 | **操作服务插件**(Plan 7.3) | `<FormOperation><ServicePlugins>` | `AbstractOperationServicePlugIn`(Python 走 `PythonOperationServicePlugIn`) | `k3cloud_add_custom_operation(pyBody=..., pluginClassName=...)` inline | 用户点**该具体操作按钮**(操作绑定 service plugin,跟单据生命周期解耦) |
-| **账表插件**(Plan 7.4,**待 7.5 创建对象工具落地后整合**) | 独立 SysReport metaobject | `AbstractSysReportPlugIn` + `AbstractSysReportServicePlugIn`(Python 走 `PythonReportPlugIn`) | ⚠️ v0.1 不能自动注册,需先在 BOS Designer 手工建账表 | 用户进入**账表页**(报表查询 / 单元格点击 / SQL 构造) |
+| **账表插件**(Plan 7.6 解锁) | `<Form><SysReportServicePlugins>` (action="edit" 模式) | `AbstractSysReportPlugIn` + `AbstractSysReportServicePlugIn`(Python 走 `PythonReportPlugIn`) | `k3cloud_create_from_template`(账表对象创建) + `k3cloud_register_sysreport_python_plugins` | 用户进入**账表页**(报表查询 / 单元格点击 / SQL 构造) |
 
-前两类挂在父对象 Form 下,操作服务插件挂在具体某个 FormOperation 内 — 跟着操作 key 走,只在那个操作触发时执行。
+前两类挂在父对象 Form 下,操作服务插件挂在具体某个 FormOperation 内 — 跟着操作 key 走,只在那个操作触发时执行。账表插件挂在 SysReport 元数据对象的 `<SysReportServicePlugins>` 节点(v0.2 起可全自动完成)。
 
 客户实战频次:`AfterBindData`(表单 49 处)/ `AfterBarItemClick`(列表 17 + 表单 32 处)/ `OnPreparePropertys`(操作服务 36 处)分别是三类的最高频事件。
 
-其他插件类型(转换插件、打印插件、报表插件)OpenDeploy v0.1 **不自动化**——如果用户需要这些,查 `k3cloud/bos-features-index` 的 `references/plugin-types` 知道全谱,告知用户手工在 BOS Designer 注册。
+其他插件类型(转换插件、打印插件、报表插件)OpenDeploy **不自动化**——如果用户需要这些,查 `k3cloud/bos-features-index` 的 `references/plugin-types` 知道全谱,告知用户手工在 BOS Designer 注册。
 
 ## 运行环境速览
 
@@ -115,10 +115,18 @@ k3cloud_list_extensions         # 查父单据有无现成扩展可复用
   └─ 无 → k3cloud_create_extension(建新扩展) → 注册工具同上
 ```
 
-三类插件选哪个看用户需求:
+账表插件(新增 v0.2):
+
+```
+1. k3cloud_create_from_template(templateId='BOS_SimpleSysReport', ...)  # 创建新账表对象(或挂在已有原厂账表的扩展上)
+2. k3cloud_register_sysreport_python_plugins(formId, className, pyBody)  # 挂 Python 服务插件
+```
+
+四类插件选哪个看用户需求:
 - **用户在单据录入页要触发的逻辑** → 表单插件
 - **用户在列表页要触发的逻辑**(典型:列表自定义按钮、列表双击行) → 列表插件
 - **新建一个自定义操作 + 一段 inline 逻辑**(操作和逻辑紧绑) → 操作服务插件
+- **自定义报表 / 账表查询逻辑**(SQL 构造 / 数据展示) → 账表插件
 
 **特别注意:内置操作(Audit / UnAudit / Delete / Submit)的拦截** 推荐走**表单插件**的 `BeforeDoOperation(self, e)` 事件 + 判 `e.Operation.OperationName == "UnAudit"` 等,设 `e.Cancel = True`。比操作服务插件路径轻量、UI 弹窗友好,客户实战最常见。详见 events-reference 的"审核 / 反审核 / 弃审拦截"段。
 
