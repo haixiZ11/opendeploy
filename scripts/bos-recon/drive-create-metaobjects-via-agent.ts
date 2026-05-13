@@ -174,7 +174,7 @@ const SCENARIOS: ScenarioSpec[] = [
     name: 'create-simple-report',
     userPrompt:
       '帮我建一个简单的台账查询账表,名字叫"OD E2E 简单账表"。' +
-      '选适合单表查询的最简单 BOS 模板,直接建,建完告诉我 FormID。',
+      '选适合单表查询的最简单 BOS 模板,直接建,不用反问,不用询问确认,建完告诉我 FormID。',
     expectedTool: 'k3cloud_create_from_template',
     acceptableTemplateIds: ['BOS_SimpleSysReport'],
     expectedDisplayName: /账表|查询/,
