@@ -23,6 +23,11 @@
       "sha256": "b62e6c0ab689beef9e2cceeec3ee5136cfb7be6686dc592cfc3d055038fda018"
     },
     {
+      "id": "k3cloud/metaobject-creation-index",
+      "version": "1.0.0",
+      "sha256": "164770e41665a7162c19618a24338157ae22d3d8701308d4f750f8eef39919fb"
+    },
+    {
       "id": "k3cloud/product-features-index",
       "version": "1.0.0",
       "sha256": "8e67a8d76d0256687291cd220323a7eb20479dc4c34b7f125a638e166f16a810"
