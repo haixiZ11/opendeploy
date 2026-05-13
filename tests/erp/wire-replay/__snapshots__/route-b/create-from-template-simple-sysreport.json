@@ -1,0 +1,17 @@
+{
+  "endpoint": "SaveForIDEV9",
+  "envelope": {
+    "ap0": {
+      "__source__": "DCXML",
+      "__paras__": {
+        "DevType": 0,
+        "ISVSignal": "Kingdee",
+        "BaseObjectId": "BOS_SimpleSysReport",
+        "MainVersion": "<live>",
+        "DomainModelType": 900
+      },
+      "2052": ""
+    },
+    "ap1_dcxml": "<FormMetadata><BusinessInfo><BusinessInfo><Elements><SysReportForm action=\"edit\" oid=\"BOS_SimpleSysReport\" ElementType=\"900\" ElementStyle=\"0\"><Id>kf0000000000000000000000000000000</Id><SubsysId>23</SubsysId><Name>TESTA</Name></SysReportForm></Elements></BusinessInfo></BusinessInfo><LayoutInfos><LayoutInfo action=\"edit\" oid=\"00000000-0000-0000-0000-000000000001\"><Appearances><FormAppearance action=\"edit\" oid=\"00000000-0000-0000-0000-000000000002\" ElementType=\"900\" ElementStyle=\"1\"><Caption>TESTA</Caption></FormAppearance></Appearances></LayoutInfo></LayoutInfos></FormMetadata>"
+  }
+}
