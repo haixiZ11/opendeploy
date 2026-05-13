@@ -11,11 +11,11 @@ const FIXED_LAYOUT_OID = '00000000-0000-0000-0000-000000000001';
 const FIXED_APPEARANCE_OID = '00000000-0000-0000-0000-000000000002';
 
 const scenarios = [
-  { name: 'simple-sysreport', templateId: 'BOS_SimpleSysReport', displayName: 'TESTA', subSystemId: 23, expected: simpleFixture },
+  { name: 'simple-sysreport', templateId: 'BOS_SimpleSysReport', displayName: 'TESTA', subSystemId: '23', expected: simpleFixture },
   // differs from simple only by <ModeTypeSubId>902</ModeTypeSubId> emitted by builder (per template-specific wire spec)
-  { name: 'paged-sysreport', templateId: 'BOS_MoveSysReport', displayName: 'TESTB', subSystemId: 23, expected: pagedFixture },
-  { name: 'bill-with-entry', templateId: 'BOS_BillWithEntryModel', displayName: 'TESTC', subSystemId: 23, expected: billFixture },
-  { name: 'basedata-org-control', templateId: 'BOS_OrgControlBDModel', displayName: 'TESTD', subSystemId: 23, expected: basedataFixture },
+  { name: 'paged-sysreport', templateId: 'BOS_MoveSysReport', displayName: 'TESTB', subSystemId: '23', expected: pagedFixture },
+  { name: 'bill-with-entry', templateId: 'BOS_BillWithEntryModel', displayName: 'TESTC', subSystemId: '23', expected: billFixture },
+  { name: 'basedata-org-control', templateId: 'BOS_OrgControlBDModel', displayName: 'TESTD', subSystemId: '23', expected: basedataFixture },
 ];
 
 describe('create-from-template wire envelope', () => {
