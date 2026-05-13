@@ -80,7 +80,7 @@ describe('buildK3CloudTools', () => {
     expect(bad.map((t) => t.definition.name)).toEqual([]);
   });
 
-  it('returns 32 tools when a connector is present', () => {
+  it('returns 33 tools when a connector is present', () => {
     const tools = buildK3CloudTools(makeFake());
     expect(tools.map((t) => t.definition.name).sort()).toEqual([
       'k3cloud_add_calculate_rule',
@@ -111,6 +111,7 @@ describe('buildK3CloudTools', () => {
       'k3cloud_list_objects',
       'k3cloud_list_operations',
       'k3cloud_list_subsystems',
+      'k3cloud_register_sysreport_python_plugins',
       'k3cloud_remove_convert_plugin',
       'k3cloud_search_metadata',
       'k3cloud_set_convert_filter',

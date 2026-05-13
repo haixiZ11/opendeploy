@@ -27,6 +27,7 @@ import fs from 'node:fs';
 
 import { login } from '../../src/main/erp/k3cloud/rpc/login';
 import { callCreateFromTemplate, getExpectedReadbackOid } from '../../src/main/erp/k3cloud/rpc/create-from-template';
+import { callRegisterSysReportPlugin } from '../../src/main/erp/k3cloud/rpc/register-sysreport-plugin';
 import { getBusinessObjectMetaData } from '../../src/main/erp/k3cloud/rpc/metadata';
 import { extractKernelXml } from '../../src/main/erp/k3cloud/rpc/metadata-xml';
 import { deleteExtension } from '../../src/main/erp/k3cloud/rpc/delete-extension';
@@ -139,10 +140,48 @@ async function runScenario(
     return { pass: false, formId: newFormId, note: `readback threw: ${msg}` };
   }
 
+  // ── Step 3: Plugin attach (simple-sysreport only, Task 5 smoke) ──────────
+  let pluginAttachNote = '';
+  if (sc.name === 'simple-sysreport' && readbackOk) {
+    try {
+      const pluginResult = await callRegisterSysReportPlugin(session, {
+        formId: newFormId,
+        baseObjectId: sc.templateId,   // template OID = DCXML baseline oid
+        className: 'SmokeReportPlugin',
+        pyBody:
+          'import clr\n' +
+          'clr.AddReference("Kingdee.BOS.Core")\n' +
+          'from Kingdee.BOS.Core.Report.PlugIn import AbstractSysReportServicePlugIn\n' +
+          'class SmokeReportPlugin(AbstractSysReportServicePlugIn):\n' +
+          '    pass\n',
+      });
+      if (!pluginResult.isSuccess) {
+        console.error(`  [PLUGIN ATTACH FAIL] ${pluginResult.messageTitle ?? ''}: ${pluginResult.messageDetail ?? ''}`);
+        return { pass: false, formId: newFormId, note: `plugin attach failed: ${pluginResult.messageTitle}` };
+      }
+      console.log(`  [PLUGIN ATTACH PASS] isSuccess=true funcResult=${pluginResult.funcResult}`);
+
+      // Readback verify
+      const md2 = await getBusinessObjectMetaData(session, newFormId);
+      const xml2 = extractKernelXml(md2.metaData) ?? '';
+      if (!xml2.includes('SmokeReportPlugin')) {
+        console.error(`  [PLUGIN READBACK FAIL] className "SmokeReportPlugin" not found in readback XML`);
+        console.error(`  XML head (400 chars): ${xml2.slice(0, 400)}`);
+        return { pass: false, formId: newFormId, note: 'plugin className not in readback XML' };
+      }
+      console.log(`  [PLUGIN READBACK PASS] "SmokeReportPlugin" found in FKERNELXML`);
+      pluginAttachNote = '+plugin';
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`  [PLUGIN ATTACH ERROR] ${msg}`);
+      return { pass: false, formId: newFormId, note: `plugin attach threw: ${msg}` };
+    }
+  }
+
   return {
     pass: readbackOk,
     formId: newFormId,
-    note: readbackOk ? `rootTag=${actualRootTag}` : 'readback failed',
+    note: readbackOk ? `rootTag=${actualRootTag}${pluginAttachNote}` : 'readback failed',
   };
 }
 

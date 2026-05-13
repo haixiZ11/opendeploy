@@ -143,6 +143,11 @@ import {
   callCreateFromTemplate,
   type CreateFromTemplateInput,
 } from './rpc/create-from-template';
+import {
+  callRegisterSysReportPlugin,
+  type RegisterSysReportPluginInput,
+  type RegisterSysReportPluginResult,
+} from './rpc/register-sysreport-plugin';
 import type {
   BosRpcCredentials,
   ExtensionMeta,
@@ -1589,6 +1594,40 @@ export class K3CloudConnector implements ErpConnector {
   ) {
     const session = this.requireSession();
     return callCreateFromTemplate(session, { ...input, mainVersion: null });
+  }
+
+  /**
+   * Append a Python plugin to an existing SysReport's SysReportServicePlugins
+   * collection.
+   *
+   * If `input.baseObjectId` is omitted, the connector reads the SysReport's
+   * FKERNELXML metadata to extract the `oid` attribute of the root element
+   * (which equals the template baseline, e.g. "BOS_SimpleSysReport"). This
+   * auto-resolve avoids the caller needing to know which template was used.
+   *
+   * Plan 7.6 Task 5 — see `rpc/register-sysreport-plugin.ts` for wire details.
+   */
+  async registerSysReportPythonPlugin(
+    input: Omit<RegisterSysReportPluginInput, 'baseObjectId'> & { baseObjectId?: string },
+  ): Promise<RegisterSysReportPluginResult> {
+    const session = this.requireSession();
+    let baseObjectId = input.baseObjectId;
+    if (!baseObjectId) {
+      // Auto-resolve: fetch FKERNELXML and parse the oid from the root element.
+      const md = await getBusinessObjectMetaData(session, input.formId, []);
+      const xml = extractKernelXml(md.metaData) ?? '';
+      // The FKERNELXML root element is e.g.:
+      //   <SysReportForm action="edit" oid="BOS_SimpleSysReport" ElementType="900" ...>
+      const oidMatch = xml.match(/oid="([^"]+)"/);
+      if (!oidMatch) {
+        throw new Error(
+          `registerSysReportPythonPlugin: 无法从 ${input.formId} 的 FKERNELXML 中解析 oid(baseObjectId)。` +
+          '请手动传入 baseObjectId 参数。',
+        );
+      }
+      baseObjectId = oidMatch[1];
+    }
+    return callRegisterSysReportPlugin(session, { ...input, baseObjectId });
   }
 
   /**

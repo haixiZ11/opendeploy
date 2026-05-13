@@ -66,6 +66,7 @@ export default [
       // ── Route B envelope wrapper + ap0 JSON construction ──
       'src/main/erp/k3cloud/rpc/save-for-ide.ts',
       'src/main/erp/k3cloud/rpc/create-from-template.ts',
+      'src/main/erp/k3cloud/rpc/register-sysreport-plugin.ts',
 
       // ── Convert-rule emitters (predate the L1 doc; future refactor pulls
       //    XML emission into dcxml.ts and removes these from the list) ──
