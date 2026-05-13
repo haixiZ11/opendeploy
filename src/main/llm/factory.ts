@@ -1,11 +1,21 @@
 import type { LlmClient } from './types';
-import { PROVIDER_CONFIGS } from './types';
+import { PROVIDER_CONFIGS, type RuntimeProviderConfig } from './types';
 import { createOpenAiClient } from './openai-client';
 import { createAnthropicClient } from './anthropic-client';
 import { createOllamaClient } from './ollama-client';
 
-export function createLlmClient(providerId: string): LlmClient {
-  const cfg = PROVIDER_CONFIGS[providerId];
+export function createLlmClient(
+  providerId: string,
+  runtimeOverride?: Partial<Pick<RuntimeProviderConfig, 'baseUrl' | 'defaultModel'>>
+): LlmClient {
+  const baseCfg = PROVIDER_CONFIGS[providerId];
+  const cfg = baseCfg
+    ? {
+        ...baseCfg,
+        ...(runtimeOverride?.baseUrl !== undefined ? { baseUrl: runtimeOverride.baseUrl } : {}),
+        ...(runtimeOverride?.defaultModel !== undefined ? { defaultModel: runtimeOverride.defaultModel } : {})
+      }
+    : undefined;
   if (!cfg) throw new Error(`Unknown provider: ${providerId}`);
 
   switch (cfg.format) {

@@ -13,12 +13,26 @@ vi.mock('electron', () => ({
 }));
 
 const runAgentLoopMock = vi.fn().mockResolvedValue([]);
+const createLlmClientMock = vi.fn(() => ({ stream: vi.fn() }));
 vi.mock('../../src/main/agent/loop', () => ({
   runAgentLoop: (...args: unknown[]) => runAgentLoopMock(...args)
 }));
 
 vi.mock('../../src/main/llm/factory', () => ({
-  createLlmClient: vi.fn(() => ({ stream: vi.fn() }))
+  createLlmClient: (...args: unknown[]) => createLlmClientMock(...args)
+}));
+vi.mock('../../src/main/settings', () => ({
+  loadSettings: vi.fn().mockResolvedValue({
+    language: 'zh-CN',
+    theme: 'system',
+    customOpenAI: {
+      vendorName: 'OpenRouter',
+      apiKey: 'sk-custom',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      model: 'openai/gpt-4o-mini'
+    },
+    llmRawDump: false
+  })
 }));
 vi.mock('../../src/main/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() })
@@ -73,6 +87,8 @@ describe('ipc-llm — model 透传', () => {
     handlerMap.clear();
     runAgentLoopMock.mockReset();
     runAgentLoopMock.mockResolvedValue([]);
+    createLlmClientMock.mockReset();
+    createLlmClientMock.mockReturnValue({ stream: vi.fn() });
     registerLlmIpc(() => null);
   });
 
@@ -106,6 +122,28 @@ describe('ipc-llm — model 透传', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(runAgentLoopMock).toHaveBeenCalledWith(
       expect.objectContaining({ providerId: 'claude', model: undefined })
+    );
+  });
+
+  it('builds custom-openai client with runtime baseUrl and default model from settings', async () => {
+    const handler = handlerMap.get('llm:send')!;
+    await handler(null, {
+      providerId: 'custom-openai',
+      apiKey: 'sk-custom',
+      model: 'openai/gpt-4o-mini',
+      userMessage: 'hi'
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(createLlmClientMock).toHaveBeenCalledWith('custom-openai', {
+      baseUrl: 'https://openrouter.ai/api/v1',
+      defaultModel: 'openai/gpt-4o-mini'
+    });
+    expect(runAgentLoopMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: 'custom-openai',
+        apiKey: 'sk-custom',
+        model: 'openai/gpt-4o-mini'
+      })
     );
   });
 });

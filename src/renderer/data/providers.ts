@@ -136,6 +136,12 @@ export const PROVIDERS: LlmProvider[] = [
     ]
   },
   {
+    id: 'custom-openai', dot: 'openai', letter: 'C',
+    label: '自定义 模型', short: '自定义', sub: '兼容 OpenAI · 自定义地址',
+    region: 'Overseas',
+    models: []
+  },
+  {
     id: 'ollama', dot: 'ollama', letter: 'O',
     label: 'Ollama 本地', short: 'Ollama', sub: '完全离线 · 自定义模型',
     region: 'Local',

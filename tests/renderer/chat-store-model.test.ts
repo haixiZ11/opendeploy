@@ -63,4 +63,22 @@ describe('chat-store sendMessage — model 透传', () => {
       expect.objectContaining({ model: 'qwen2.5-coder' })
     );
   });
+
+  it('custom-openai uses customOpenAI.model as IPC payload.model', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        customOpenAI: {
+          apiKey: 'sk-custom',
+          baseUrl: 'https://example.com/v1',
+          model: 'gpt-4o-mini'
+        }
+      },
+      loaded: true
+    });
+    await useChatStore.getState().sendMessage('hi', 'custom-openai', 'sk-custom');
+    expect(llmSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: 'custom-openai', model: 'gpt-4o-mini' })
+    );
+  });
 });

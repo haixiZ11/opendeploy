@@ -20,7 +20,9 @@ export function Composer({ llmProviderId, presetText }: ComposerProps) {
   const wasStreamingRef = useRef(false);
 
   const effectiveProviderId = llmProviderId ?? settings.llmProvider ?? 'deepseek';
-  const apiKey = settings.apiKeys?.[effectiveProviderId];
+  const apiKey = effectiveProviderId === 'custom-openai'
+    ? settings.customOpenAI?.apiKey
+    : settings.apiKeys?.[effectiveProviderId];
 
   // Auto-focus the textarea when streaming finishes (true → false transition).
   // Without this, the cursor stays parked wherever the user last clicked,

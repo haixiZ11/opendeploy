@@ -8,11 +8,19 @@ import type { MessageBlock } from './blocks';
 export type Language = 'zh-CN' | 'en-US';
 export type Theme = 'light' | 'dark' | 'system';
 
+export interface CustomOpenAISettings {
+  vendorName?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}
+
 export interface AppSettings {
   language: Language;
   theme: Theme;
   llmProvider?: string;
   apiKeys?: Record<string, string>;
+  customOpenAI?: CustomOpenAISettings;
   /**
    * 用户在每个 LLM 厂商下选择的具体模型 id (e.g. {deepseek: 'deepseek-v4-pro'}).
    * 缺省时通过 resolveActiveModel 回退到该 provider 的 recommended 模型.
@@ -89,6 +97,11 @@ export interface IpcApi {
   saveSettings: (settings: AppSettings) => Promise<void>;
   getPlatform: () => Promise<NodeJS.Platform>;
   setWindowTitle: (title: string) => Promise<void>;
+  llmListModels: (input: {
+    providerId: string;
+    apiKey?: string;
+    baseUrl?: string;
+  }) => Promise<{ models: string[] }>;
   llmSendMessage: (req: LlmChatRequest) => Promise<{ requestId: string }>;
   llmAbort: (requestId: string) => Promise<void>;
   llmOnStream: (cb: (ev: LlmStreamEvent) => void) => () => void;

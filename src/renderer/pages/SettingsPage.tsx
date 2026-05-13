@@ -161,6 +161,7 @@ function LlmSection() {
   const setApiKey = useSettingsStore((s) => s.setApiKey);
   const setModel = useSettingsStore((s) => s.setModel);
   const setOllamaModelInput = useSettingsStore((s) => s.setOllamaModelInput);
+  const setCustomOpenAI = useSettingsStore((s) => s.setCustomOpenAI);
 
   const initialProviderId = settings.llmProvider ?? 'deepseek';
   const [selectedProviderId, setSelectedProviderId] =
@@ -168,9 +169,24 @@ function LlmSection() {
   const provider: LlmProvider | undefined = PROVIDER_BY_ID[selectedProviderId];
 
   const [apiKeyInput, setApiKeyInput] = useState<string>(
-    settings.apiKeys?.[initialProviderId] ?? ''
+    initialProviderId === 'custom-openai'
+      ? settings.customOpenAI?.apiKey ?? ''
+      : settings.apiKeys?.[initialProviderId] ?? ''
   );
   const [saved, setSaved] = useState(false);
+  const [customVendorName, setCustomVendorName] = useState<string>(
+    settings.customOpenAI?.vendorName ?? ''
+  );
+  const [customBaseUrl, setCustomBaseUrl] = useState<string>(
+    settings.customOpenAI?.baseUrl ?? ''
+  );
+  const [customModelInput, setCustomModelInput] = useState<string>(
+    settings.customOpenAI?.model ?? ''
+  );
+  const [customModelOptions, setCustomModelOptions] = useState<string[]>([]);
+  const [listingModels, setListingModels] = useState(false);
+  const [listModelsError, setListModelsError] = useState<string | null>(null);
+  const [inlineHint, setInlineHint] = useState<string | null>(null);
 
   const [selectedModelId, setSelectedModelId] = useState<string>(
     () => resolveActiveModel(selectedProviderId, settings.modelByProvider)?.id ?? ''
@@ -187,6 +203,15 @@ function LlmSection() {
     const m = resolveActiveModel(selectedProviderId, settings.modelByProvider);
     setSelectedModelId(m?.id ?? '');
   }, [selectedProviderId, settings.modelByProvider]);
+
+  useEffect(() => {
+    if (selectedProviderId === 'custom-openai') {
+      setApiKeyInput(settings.customOpenAI?.apiKey ?? '');
+      setCustomVendorName(settings.customOpenAI?.vendorName ?? '');
+      setCustomBaseUrl(settings.customOpenAI?.baseUrl ?? '');
+      setCustomModelInput(settings.customOpenAI?.model ?? '');
+    }
+  }, [selectedProviderId, settings.customOpenAI]);
 
   const handleModelChange = async (id: string): Promise<void> => {
     setSelectedModelId(id);
@@ -206,18 +231,67 @@ function LlmSection() {
 
   const handleProviderSelect = async (provider: LlmProvider): Promise<void> => {
     setSelectedProviderId(provider.id);
-    setApiKeyInput(settings.apiKeys?.[provider.id] ?? '');
+    setApiKeyInput(
+      provider.id === 'custom-openai'
+        ? settings.customOpenAI?.apiKey ?? ''
+        : settings.apiKeys?.[provider.id] ?? ''
+    );
     setSaved(false);
+    setListModelsError(null);
+    setInlineHint(null);
     await setLlmProvider(provider.id);
   };
 
   const handleSave = async (): Promise<void> => {
+    if (selectedProviderId === 'custom-openai') {
+      const finalModel = customModelInput.trim();
+      await setCustomOpenAI({
+        vendorName: customVendorName.trim(),
+        apiKey: apiKeyInput.trim(),
+        baseUrl: customBaseUrl.trim(),
+        model: finalModel
+      });
+      await setModel(selectedProviderId, finalModel);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
+      return;
+    }
     await setApiKey(selectedProviderId, apiKeyInput);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
   };
 
+  const handleFetchModels = async (): Promise<void> => {
+    if (!customBaseUrl.trim()) {
+      setInlineHint(t('settings.fillBaseUrlFirst'));
+      return;
+    }
+    if (!apiKeyInput.trim()) {
+      setInlineHint(t('settings.fillApiKeyFirst'));
+      return;
+    }
+    setListingModels(true);
+    setListModelsError(null);
+    setInlineHint(null);
+    try {
+      const { models } = await window.opendeploy.llmListModels({
+        providerId: 'custom-openai',
+        apiKey: apiKeyInput.trim(),
+        baseUrl: customBaseUrl.trim()
+      });
+      setCustomModelOptions(models);
+      if (!customModelInput.trim() && models.length > 0) {
+        setCustomModelInput(models[0]);
+      }
+    } catch (err) {
+      setListModelsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setListingModels(false);
+    }
+  };
+
   const isOllama = selectedProviderId === 'ollama';
+  const isCustomOpenAI = selectedProviderId === 'custom-openai';
 
   return (
     <>
@@ -279,7 +353,7 @@ function LlmSection() {
         </div>
       </section>
 
-      {!isOllama && provider && provider.models.length > 0 && (
+      {!isOllama && !isCustomOpenAI && provider && provider.models.length > 0 && (
         <section style={{ marginBottom: 24 }}>
           <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>{t('settings.model')}</h3>
           <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>{t('settings.modelHint')}</p>
@@ -331,30 +405,131 @@ function LlmSection() {
         </section>
       )}
 
-      <section>
-        <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>{t('settings.apiKeySection')}</h3>
-        {isOllama ? (
-          <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-            {t('settings.ollamaNoKey')}
-          </p>
-        ) : (
-          <div className="setting-row" style={{ borderBottom: 'none' }}>
-            <div>
-              <div className="lbl">
-                {t('settings.apiKey')} ({selectedProviderId})
+      {isCustomOpenAI && (
+        <>
+          <section style={{ marginBottom: 24 }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>{t('settings.customOpenAITitle')}</h3>
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+              {t('settings.customOpenAIDesc')}
+            </p>
+            <div className="setting-row">
+              <div><div className="lbl">{t('settings.customBaseUrl')}</div></div>
+              <div className="ctl">
+                <input
+                  type="text"
+                  value={customBaseUrl}
+                  onChange={(e) => {
+                    setCustomBaseUrl(e.target.value);
+                    setSaved(false);
+                    setListModelsError(null);
+                    setInlineHint(null);
+                  }}
+                  placeholder={t('settings.customBaseUrlPlaceholder')}
+                  style={{ minWidth: 320 }}
+                />
               </div>
             </div>
+            <div className="setting-row">
+              <div><div className="lbl">{t('settings.apiKey')}</div></div>
+              <div className="ctl">
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => {
+                    setApiKeyInput(e.target.value);
+                    setSaved(false);
+                    setListModelsError(null);
+                    setInlineHint(null);
+                  }}
+                  placeholder={t('settings.apiKeyPlaceholder')}
+                  style={{ minWidth: 320 }}
+                />
+              </div>
+            </div>
+            <div className="setting-row" style={{ borderBottom: 'none' }}>
+              <div><div className="lbl">{t('settings.customVendorName')}</div></div>
+              <div className="ctl">
+                <input
+                  type="text"
+                  value={customVendorName}
+                  onChange={(e) => {
+                    setCustomVendorName(e.target.value);
+                    setSaved(false);
+                  }}
+                  placeholder={t('settings.customVendorPlaceholder')}
+                  style={{ minWidth: 320 }}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 24 }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>{t('settings.model')}</h3>
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+              {t('settings.customModelFetchHint')}
+            </p>
+            <div className="setting-row">
+              <div><div className="lbl">{t('settings.customModel')}</div></div>
+              <div className="ctl" style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={listingModels}
+                    onClick={() => {
+                      void handleFetchModels();
+                    }}
+                  >
+                    {listingModels ? t('settings.fetchingModels') : t('settings.fetchModels')}
+                  </button>
+                  {customModelOptions.length > 0 && (
+                    <select
+                      value={customModelInput}
+                      onChange={(e) => {
+                        setCustomModelInput(e.target.value);
+                        setSaved(false);
+                      }}
+                      style={{ minWidth: 280, padding: '6px 8px' }}
+                    >
+                      {customModelOptions.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={customModelInput}
+                  onChange={(e) => {
+                    setCustomModelInput(e.target.value);
+                    setSaved(false);
+                  }}
+                  placeholder={t('settings.customModelPlaceholder')}
+                  style={{ minWidth: 320 }}
+                />
+                {inlineHint && (
+                  <div className="muted" style={{ fontSize: 12, color: 'var(--danger, #c0392b)' }}>
+                    {inlineHint}
+                  </div>
+                )}
+                {listModelsError && (
+                  <div className="muted" style={{ fontSize: 12, color: 'var(--danger, #c0392b)' }}>
+                    {t('settings.fetchModelsFailed')}: {listModelsError}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {isCustomOpenAI ? (
+        <section>
+          <div className="setting-row" style={{ borderBottom: 'none' }}>
+            <div>
+              <div className="lbl">{t('settings.save')}</div>
+            </div>
             <div className="ctl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                type="password"
-                value={apiKeyInput}
-                onChange={(e) => {
-                  setApiKeyInput(e.target.value);
-                  setSaved(false);
-                }}
-                placeholder={t('settings.apiKeyPlaceholder')}
-                style={{ minWidth: 260 }}
-              />
               <button
                 type="button"
                 className="btn primary lg"
@@ -367,8 +542,48 @@ function LlmSection() {
               {saved && <span className="chip good">{t('settings.saved')}</span>}
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      ) : (
+        <section>
+          <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>{t('settings.apiKeySection')}</h3>
+          {isOllama ? (
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+              {t('settings.ollamaNoKey')}
+            </p>
+          ) : (
+            <div className="setting-row" style={{ borderBottom: 'none' }}>
+              <div>
+                <div className="lbl">
+                  {t('settings.apiKey')} ({selectedProviderId})
+                </div>
+              </div>
+              <div className="ctl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => {
+                    setApiKeyInput(e.target.value);
+                    setSaved(false);
+                    setListModelsError(null);
+                  }}
+                  placeholder={t('settings.apiKeyPlaceholder')}
+                  style={{ minWidth: 260 }}
+                />
+                <button
+                  type="button"
+                  className="btn primary lg"
+                  onClick={() => {
+                    void handleSave();
+                  }}
+                >
+                  {t('settings.save')}
+                </button>
+                {saved && <span className="chip good">{t('settings.saved')}</span>}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </>
   );
 }

@@ -8,6 +8,7 @@ const api: IpcApi = {
   saveSettings: (settings: AppSettings) => ipcRenderer.invoke('settings:save', settings),
   getPlatform: () => ipcRenderer.invoke('app:platform'),
   setWindowTitle: (title: string) => ipcRenderer.invoke('app:set-window-title', title),
+  llmListModels: (input) => ipcRenderer.invoke('llm:list-models', input),
   llmSendMessage: (req: LlmChatRequest) => ipcRenderer.invoke('llm:send', req),
   llmAbort: (requestId: string) => ipcRenderer.invoke('llm:abort', requestId),
   llmOnStream: (cb: (ev: LlmStreamEvent) => void) => {

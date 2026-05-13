@@ -47,6 +47,8 @@ export interface ProviderConfig {
   format: 'openai' | 'anthropic' | 'ollama';
 }
 
+export interface RuntimeProviderConfig extends ProviderConfig {}
+
 /**
  * Map provider id → config. Each entry used by factory to build correct client.
  *
@@ -66,5 +68,6 @@ export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
   minimax:  { id: 'minimax',  baseUrl: 'https://api.minimax.chat/v1', defaultModel: 'MiniMax-M2.7', format: 'openai' },
   gpt:      { id: 'gpt',      baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-5.5', format: 'openai' },
   claude:   { id: 'claude',   baseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-haiku-4-5-20251001', format: 'anthropic' },
+  'custom-openai': { id: 'custom-openai', baseUrl: '', defaultModel: '', format: 'openai' },
   ollama:   { id: 'ollama',   baseUrl: 'http://localhost:11434', defaultModel: 'qwen2.5-coder', format: 'ollama' }
 };

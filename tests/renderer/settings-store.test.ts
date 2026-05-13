@@ -54,4 +54,26 @@ describe('settings store — model selection', () => {
       expect.objectContaining({ ollamaModelInput: 'llama3.1:70b' })
     );
   });
+
+  it('setCustomOpenAI persists custom provider fields', async () => {
+    await useSettingsStore.getState().setCustomOpenAI({
+      vendorName: 'OpenRouter',
+      apiKey: 'sk-custom',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      model: 'openai/gpt-4o-mini'
+    });
+    expect(useSettingsStore.getState().settings.customOpenAI).toEqual({
+      vendorName: 'OpenRouter',
+      apiKey: 'sk-custom',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      model: 'openai/gpt-4o-mini'
+    });
+  });
+
+  it('setModel writes custom-openai model into customOpenAI config', async () => {
+    await useSettingsStore.getState().setModel('custom-openai', 'deepseek-chat');
+    expect(useSettingsStore.getState().settings.customOpenAI).toEqual({
+      model: 'deepseek-chat'
+    });
+  });
 });

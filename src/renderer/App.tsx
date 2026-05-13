@@ -151,12 +151,18 @@ export function App() {
       setPage('wizard');
       return;
     }
+    if (provider === 'custom-openai') {
+      const custom = settings.customOpenAI;
+      const complete = !!custom?.apiKey?.trim() && !!custom?.baseUrl?.trim() && !!custom?.model?.trim();
+      if (!complete) setPage('settings');
+      return;
+    }
     const needsApiKey = provider !== 'ollama';
     const hasApiKey = !needsApiKey || !!settings.apiKeys?.[provider];
     if (!hasApiKey) {
       setPage('wizard');
     }
-  }, [loaded, settings.llmProvider, settings.apiKeys, wizardCompleted]);
+  }, [loaded, settings.llmProvider, settings.apiKeys, settings.customOpenAI, wizardCompleted]);
 
   if (!loaded) {
     return (

@@ -1,6 +1,8 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import type { LlmChatRequest } from '@shared/types';
 import { createLlmClient } from './llm/factory';
+import { listOpenAiModels } from './llm/openai-client';
+import { PROVIDER_CONFIGS } from './llm/types';
 import { runAgentLoop } from './agent/loop';
 import { createLogger } from './logger';
 import { loadSettings } from './settings';
@@ -52,6 +54,32 @@ const activeConversations = new Map<string, Message[]>();
 const activeAborts = new Map<string, AbortController>();
 
 export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void {
+  ipcMain.handle(
+    'llm:list-models',
+    async (_event, input: { providerId: string; apiKey?: string; baseUrl?: string }) => {
+      const settings = await loadSettings();
+      const providerId = input.providerId;
+      if (providerId === 'custom-openai') {
+        const baseUrl = input.baseUrl?.trim() || settings.customOpenAI?.baseUrl?.trim();
+        const apiKey = input.apiKey ?? settings.customOpenAI?.apiKey;
+        if (!baseUrl) throw new Error('Missing custom OpenAI baseUrl');
+        const models = await listOpenAiModels({ baseUrl, apiKey });
+        return { models };
+      }
+
+      const settingsApiKey = settings.apiKeys?.[providerId];
+      const providerCfg = PROVIDER_CONFIGS[providerId];
+      if (!providerCfg || providerCfg.format !== 'openai') {
+        throw new Error(`Provider does not support model listing: ${providerId}`);
+      }
+      const models = await listOpenAiModels({
+        baseUrl: providerCfg.baseUrl,
+        apiKey: input.apiKey ?? settingsApiKey
+      });
+      return { models };
+    }
+  );
+
   ipcMain.handle('llm:send', async (_event, req: LlmChatRequest) => {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const abortController = new AbortController();
@@ -97,6 +125,7 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
     // Run asynchronously — don't block IPC
     void (async () => {
       try {
+        const settings = await loadSettings();
         // Fresh registry + skill catalog + k3cloud tools per request so
         // project switches / skill installs between turns are picked up
         // without an app restart.
@@ -129,7 +158,13 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
           .filter((s) => s && s.trim() !== '')
           .join('\n\n');
 
-        const client = createLlmClient(req.providerId);
+        const runtimeLlm = req.providerId === 'custom-openai'
+          ? {
+              baseUrl: settings.customOpenAI?.baseUrl?.trim() ?? '',
+              defaultModel: settings.customOpenAI?.model?.trim() ?? ''
+            }
+          : undefined;
+        const client = createLlmClient(req.providerId, runtimeLlm);
         // conversationId for trace stitching — fall back to requestId for
         // brand-new conversations (renderer attaches `conversationId` only
         // on follow-up turns, but trace records still need a join key).
@@ -140,7 +175,6 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
         // loop will invoke the factory once per LLM call. Always-on prune
         // after the first turn keeps the dir size bounded without manual
         // cleanup; the prune is fire-and-forget so it doesn't slow the turn.
-        const settings = await loadSettings();
         const rawDumpOn = settings.llmRawDump !== false;
         const rawCaptureFactory = rawDumpOn
           ? (turn: number) =>

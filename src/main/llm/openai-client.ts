@@ -10,8 +10,25 @@ interface OpenAiClientOpts {
   fetchImpl?: typeof fetch;
 }
 
+function normalizeOpenAiBaseUrl(baseUrl: string): string {
+  return baseUrl
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/chat\/completions$/i, '')
+    .replace(/\/models$/i, '');
+}
+
+function buildOpenAiEndpoint(baseUrl: string, path: '/chat/completions' | '/models'): string {
+  const normalized = normalizeOpenAiBaseUrl(baseUrl);
+  if (/\/v1$/i.test(normalized)) {
+    return `${normalized}${path}`;
+  }
+  return `${normalized}/v1${path}`;
+}
+
 export function createOpenAiClient(opts: OpenAiClientOpts): LlmClient {
   const fetchImpl = opts.fetchImpl ?? fetch;
+  const chatEndpoint = buildOpenAiEndpoint(opts.baseUrl, '/chat/completions');
 
   return {
     async *stream(req: ChatRequest, optsOrSignal?): AsyncIterable<StreamEvent> {
@@ -58,7 +75,7 @@ export function createOpenAiClient(opts: OpenAiClientOpts): LlmClient {
 
       let response: Response;
       try {
-        response = await fetchImpl(`${opts.baseUrl}/chat/completions`, {
+        response = await fetchImpl(chatEndpoint, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
@@ -197,4 +214,27 @@ export function createOpenAiClient(opts: OpenAiClientOpts): LlmClient {
       await rawCapture?.onClose();
     }
   };
+}
+
+export async function listOpenAiModels(input: {
+  baseUrl: string;
+  apiKey?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string[]> {
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const response = await fetchImpl(buildOpenAiEndpoint(input.baseUrl, '/models'), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${input.apiKey ?? ''}`
+    }
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`HTTP ${response.status}: ${text}`);
+  }
+  const data = await response.json() as { data?: Array<{ id?: string }> };
+  const models = (data.data ?? [])
+    .map((m) => (typeof m.id === 'string' ? m.id.trim() : ''))
+    .filter((id) => id.length > 0);
+  return Array.from(new Set(models));
 }
