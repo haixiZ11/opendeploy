@@ -5,6 +5,10 @@ import simpleFixture from './wire-replay/__snapshots__/route-b/create-from-templ
 import pagedFixture from './wire-replay/__snapshots__/route-b/create-from-template-paged-sysreport.json';
 import billFixture from './wire-replay/__snapshots__/route-b/create-from-template-bill-with-entry.json';
 import basedataFixture from './wire-replay/__snapshots__/route-b/create-from-template-basedata-org-control.json';
+import dfCommonFilterFixture from './wire-replay/__snapshots__/route-b/create-from-template-dynamicform-common-filter.json';
+import dfStandardFilterFixture from './wire-replay/__snapshots__/route-b/create-from-template-dynamicform-standard-filter.json';
+import dfBillTypeParamFixture from './wire-replay/__snapshots__/route-b/create-from-template-dynamicform-billtype-param.json';
+import dfListFixture from './wire-replay/__snapshots__/route-b/create-from-template-dynamicform-list.json';
 
 const FIXED_NEW_ID = 'kf0000000000000000000000000000000';
 const FIXED_LAYOUT_OID = '00000000-0000-0000-0000-000000000001';
@@ -16,6 +20,11 @@ const scenarios = [
   { name: 'paged-sysreport', templateId: 'BOS_MoveSysReport', displayName: 'TESTB', subSystemId: '23', expected: pagedFixture },
   { name: 'bill-with-entry', templateId: 'BOS_BillWithEntryModel', displayName: 'TESTC', subSystemId: '23', expected: billFixture },
   { name: 'basedata-org-control', templateId: 'BOS_OrgControlBDModel', displayName: 'TESTD', subSystemId: '23', expected: basedataFixture },
+  // Plan 7.7 — DynamicForm (ModelType=500) 4 个代表性场景
+  { name: 'dynamicform-common-filter', templateId: 'BOS_CommonFilter', displayName: 'TESTE', subSystemId: '23', expected: dfCommonFilterFixture },
+  { name: 'dynamicform-standard-filter', templateId: 'BOS_StandardFilter', displayName: 'TESTF', subSystemId: '23', expected: dfStandardFilterFixture },
+  { name: 'dynamicform-billtype-param', templateId: 'BOS_BILLTYPEPARAMODEL', displayName: 'TESTG', subSystemId: '23', expected: dfBillTypeParamFixture },
+  { name: 'dynamicform-list', templateId: 'BOS_List', displayName: 'TESTH', subSystemId: '23', expected: dfListFixture },
 ];
 
 describe('create-from-template wire envelope', () => {

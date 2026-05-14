@@ -34,6 +34,9 @@ export function createFromTemplateTool(c: K3CloudConnector): ToolHandler {
         '- BOS_BaseDataModel — 基础资料(根模板,minimal)\n' +
         '- BOS_OrgControlBDModel — 基础资料(组织控制,K3 客户最常用)\n' +
         '- BOS_NoOrgControlBDModel — 基础资料(无组织控制)\n' +
+        '- BOS_CommonFilter — 动态表单:公共过滤面板(客户最常用)\n' +
+        '- BOS_WIZARDFORMTPL — 动态表单:多步骤向导界面\n' +
+        '- BOS_BILLTYPEPARAMODEL — 动态表单:参数配置对话框\n' +
         '\n' +
         '完整列表见 metaobject-creation-index skill 的 references/template-catalog。\n' +
         '\n' +

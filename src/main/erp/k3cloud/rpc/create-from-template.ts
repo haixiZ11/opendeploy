@@ -139,6 +139,22 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
   BOS_PageOrgControlBDModel: { modelType: 400, readbackOid: 'BOS_BaseDataModel' },
   BOS_SubordinateBaseData: { modelType: 400, readbackOid: 'BOS_BaseDataModel' },
   BOS_BaseNoFieldModel: { modelType: 400, readbackOid: 'BOS_BaseDataModel' },
+
+  // DynamicForm (500) — Plan 7.7
+  // DynamicForm 跟 SysReport/BillForm/BaseDataForm 本质不同:不是独立业务对象,
+  // 而是 BOS 配套辅助 UI 模板(过滤器/向导/列表底盘/参数对话框/卡片菜单)。
+  // 客户使用量 TOP 9(by `.scratch/captures/bos-templates.json`)。
+  // readbackOid 默认 = templateId — DynamicForm 模板彼此平级,无"根模板收敛"
+  // (区别于 BillForm 都收敛到 BOS_BillModel、BaseDataForm 都收敛到 BOS_BaseDataModel)。
+  BOS_CommonFilter: { modelType: 500 },           // 公共过滤(441 客户实例,最常用)
+  BOS_StandardFilter: { modelType: 500 },         // 列表过滤
+  BOS_OrgIsolationFilter: { modelType: 500 },     // 列表过滤(带组织)
+  BOS_ForceOrgIsolationFilter: { modelType: 500 },// 列表过滤(强制带组织)
+  BOS_EasyReportCommonFilter: { modelType: 500 }, // 简单报表过滤
+  BOS_List: { modelType: 500 },                   // 列表
+  BOS_WIZARDFORMTPL: { modelType: 500 },          // 向导动态表单模板
+  BOS_BILLTYPEPARAMODEL: { modelType: 500 },      // 单据类型参数模板
+  BOS_BASECLOUDPART: { modelType: 500 },          // 页面部件动态表单基类
 };
 
 /**
