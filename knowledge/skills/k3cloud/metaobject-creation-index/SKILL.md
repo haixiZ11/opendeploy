@@ -1,7 +1,7 @@
 ---
 name: metaobject-creation-index
 title: K/3 Cloud 创建新 metaobject (模板继承) 索引
-description: 创建新单据 / 基础资料 / 账表 / 动态表单时加载。BOS Designer "新建向导 → 模板继承"功能的等价实现 — 实际是从一个 BOS 自带的模板对象继承,wire 跟 k3cloud_create_extension 同款 SaveForIDEV9 路径。本 skill 是索引,具体子主题按需 load_skill_file。
+description: 创建新单据 / 基础资料 / 账表 / 动态表单(过滤器/列表/向导/参数对话框)时加载。BOS Designer "新建向导 → 模板继承"功能的等价实现 — 实际是从一个 BOS 自带的模板对象继承,wire 跟 k3cloud_create_extension 同款 SaveForIDEV9 路径。本 skill 是索引,具体子主题按需 load_skill_file。
 version: 1.0.0
 category: metadata
 ---
@@ -15,17 +15,17 @@ category: metadata
 
 | 工具 | 用途 | 前置条件 |
 |---|---|---|
-| `k3cloud_create_from_template` | 从 BOS_* 模板继承创建新 metaobject(账表 / 单据 / 基础资料) | 无(先选模板) |
+| `k3cloud_create_from_template` | 从 BOS_* 模板继承创建新 metaobject(账表 / 单据 / 基础资料 / 动态表单) | 无(先选模板) |
 | `k3cloud_register_sysreport_python_plugins` | 给已有账表挂 Python 服务插件(`SysReportServicePlugins`) | 必须已有 SysReport formId(通常由上面创建) |
 
 ## ModelType 总览
 
-| ModelType | 对应类型 | 工具支持 | 模板数 |
+| ModelType | 对应类型 | 工具支持 | 已注册模板 |
 |---|---|---|---|
 | **100** | 单据(BillForm) | `k3cloud_create_from_template` | 5 个 |
 | **400** | 基础资料(BaseDataForm) | `k3cloud_create_from_template` | 7 个 |
-| **500** | 动态表单(DynamicForm) | ⚠️ v0.2 不重点支持 | ~多个 |
-| **900** | 账表(SysReport) | `k3cloud_create_from_template` + `k3cloud_register_sysreport_python_plugins` | 7 个 |
+| **500** | 动态表单(DynamicForm) | `k3cloud_create_from_template` | 9 个(Plan 7.7) |
+| **900** | 账表(SysReport) | `k3cloud_create_from_template` + `k3cloud_register_sysreport_python_plugins` | 6 个(简单/分页/树形/明细/汇总/交叉) |
 
 完整模板字典见 `references/template-catalog`。
 

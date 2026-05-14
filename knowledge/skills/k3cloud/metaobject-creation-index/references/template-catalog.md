@@ -62,9 +62,29 @@
 
 ---
 
-## 动态表单 (ModelType=500) — v0.2 不重点支持
+## 动态表单 (ModelType=500) — 9 个核心模板(Plan 7.7)
 
-v0.2 不重点支持动态表单创建。如需要,见 BOS_* 系列 ModelType=500 的模板列表(查 `.scratch/captures/bos-templates.json` 共约 767 候选,其中包含多个 DynamicForm 模板)。当前工具不对这类模板做专项测试。
+🟡 主流程已整理(`.scratch/captures/bos-templates.json` 客户使用量 TOP 实证 + 反编译 `Kingdee.BOS.Core.DynamicForm`)
+
+DynamicForm 跟单据/基础资料/账表本质不同 — 是**配套辅助 UI 模板**(过滤器、向导、列表底盘、参数对话框、卡片菜单),不是独立业务对象。客户使用量超过单据 + 基础资料 + 账表之和(4283 实例,远多于其他)。
+
+| templateId | 中文名 | 适用场景 |
+|---|---|---|
+| `BOS_CommonFilter` | 公共过滤 | **首选**。客户使用量最大(441 实例)。给报表 / 列表挂自定义过滤条件用 |
+| `BOS_StandardFilter` | 列表过滤 | 标准列表的过滤面板。配合 K/3 列表用 |
+| `BOS_OrgIsolationFilter` | 列表过滤(带组织) | 同 StandardFilter,但内置组织隔离 |
+| `BOS_ForceOrgIsolationFilter` | 列表过滤(强制带组织) | OrgIsolation 升级版,组织字段必填强制 |
+| `BOS_EasyReportCommonFilter` | 简单报表过滤 | 专给 EasyReport 系列账表挂的过滤面板 |
+| `BOS_List` | 列表 | 独立的列表 DynamicForm(不挂在标准列表里) |
+| `BOS_WIZARDFORMTPL` | 向导动态表单模板 | 多步骤向导(Step1 → Step2 → Step3)型 UI |
+| `BOS_BILLTYPEPARAMODEL` | 单据类型参数模板 | 单据类型配置对话框(参数面板形态) |
+| `BOS_BASECLOUDPART` | 页面部件动态表单基类 | 嵌入式 UI 部件,挂在其他表单的容器里 |
+
+**readbackOid 说明**:DynamicForm 模板**彼此平级**,没有"根模板收敛"。每个 BOS_* 模板创建后 FKERNELXML readback 的 `oid` 就等于 templateId(区别于 BillForm 都收敛到 `BOS_BillModel`、BaseDataForm 都收敛到 `BOS_BaseDataModel`)。
+
+**DynamicForm 表单插件注册**:走 `k3cloud_register_python_plugins`(跟单据/基础资料同款,不是 sysreport 版本)。
+
+**v0.2 未注册的模板**:`.scratch/captures/bos-templates.json` 里还有 26 个 BOS_* DynamicForm 模板(BOS_AIPrivacy / BOS_HtmlConsole / BOS_TeamWorkMainConsole 等),这些场景特殊性强,需要时再扩展 `TEMPLATE_REGISTRY` 即可,wire 路径不变。
 
 ---
 
@@ -92,3 +112,7 @@ v0.2 不重点支持动态表单创建。如需要,见 BOS_* 系列 ModelType=50
 | "建一个 SKU 颜色码表,全公司共享" | `BOS_NoOrgControlBDModel` |
 | "建一个系统参数配置表" | `BOS_NoOrgControlBDModel` |
 | "建一个供应商联系人(从属于供应商)" | `BOS_SubordinateBaseData` |
+| "给账表做个自定义过滤面板" | `BOS_CommonFilter` 或 `BOS_EasyReportCommonFilter`(EasyReport 系列报表) |
+| "做一个多步骤向导界面" | `BOS_WIZARDFORMTPL` |
+| "建一个参数配置对话框" | `BOS_BILLTYPEPARAMODEL` |
+| "做一个独立的列表查询界面" | `BOS_List` |

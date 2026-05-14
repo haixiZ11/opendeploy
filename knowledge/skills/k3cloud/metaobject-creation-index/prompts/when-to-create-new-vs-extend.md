@@ -92,4 +92,4 @@ K/3 Cloud 实施顾问的日常工作 99% 是在标准单据/基础资料上扩�
 | **新建账表** | 选模板 → 见 `references/template-catalog`,然后调 `k3cloud_create_from_template` + `k3cloud_register_sysreport_python_plugins` |
 | **新建单据** | 选模板 → 见 `references/template-catalog`,调 `k3cloud_create_from_template` |
 | **新建基础资料** | 选模板 → 见 `references/template-catalog`,调 `k3cloud_create_from_template` |
-| **动态表单** | v0.2 暂不支持自动化新建,让用户在 BOS Designer 手工创建 |
+| **新建动态表单(过滤器/向导/参数对话框)** | 选模板 → 见 `references/template-catalog` 动态表单段,调 `k3cloud_create_from_template`。常用:`BOS_CommonFilter`(过滤器)、`BOS_WIZARDFORMTPL`(向导)、`BOS_BILLTYPEPARAMODEL`(参数面板) |
