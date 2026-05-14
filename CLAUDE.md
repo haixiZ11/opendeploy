@@ -11,7 +11,7 @@
 
 ## 当前状态
 
-- **版本**：v0.1.0-alpha.1（已发布 2026-05-09，GitHub Release）
+- **版本**：v0.2.0-alpha（2026-05-14 打 tag，已 push GitHub；GitHub Release 待手动发）
 - **分支**：`main`
 
 **Plan 进度**：
@@ -35,7 +35,7 @@
 | **6** | **打包发布 + Alpha Release**（skills 仓库 push + 一次性清缓存策略 + electron NSIS installer） | ✅（2026-05-09 v0.1.0-alpha.1 发到 GitHub Release） |
 | **7（v0.2 master）** | **BOS 覆盖面扩展 — v0.2 alpha 范围** — 7.0 转换规则通用化 ✅ / 7.1 表单插件事件参考扩到 30+ ✅ / 7.2 列表插件 + 列表菜单按钮 ✅ / 7.3 操作服务插件 events-reference + SKILL ✅ / 7.4 账表 knowledge bridge ✅(创建账表已被 7.6 解锁) / 7.5 → 拆 Plan 8。Master plan: `docs/plans/2026-05-11-plan-7-bos-coverage-expansion.md` | ✅(2026-05-11 全部完成,可发 v0.2 alpha) |
 | **7.6** | 创建 metaobject(模板继承，SysReport[简单+分页] + BillForm + BaseDataForm) | ✅(2026-05-13，2 工具 + 1 skill + 5 层测试全过) |
-| **7.7** | 创建 DynamicForm(过滤器/列表/向导/参数对话框等 35 BOS_* 模板) | 🔄 进行中(2026-05-14) — TEMPLATE_REGISTRY 加 ModelType=500，复用 7.6 工具 |
+| **7.7** | 创建 DynamicForm(过滤器/列表/向导/参数对话框 9 BOS_* 模板) | ✅(2026-05-14，TEMPLATE_REGISTRY 加 ModelType=500 复用 7.6 工具,mock+真服务器 e2e 各 3/3) |
 | **8（v0.3）** | 创建新 metaobject 剩余子集 (树形账表 / 直接SQL账表 / 透视账表 / WNReportForm 万能账表) | ⏳ 留 v0.3 |
 
 **测试**：73 test files / 887 tests，全绿。lint clean。
