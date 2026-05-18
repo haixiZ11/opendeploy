@@ -42,9 +42,24 @@ export interface BosClientInfo {
   hostName: string;
   ipAddress: string;
   OperationSystem: string;
+  /**
+   * `Kingdee.BOS.Authentication.ClientType` enum value. Matters at login —
+   * `UserService.isLoginNeedBoundary` (decompiled 2026-05-18) bypasses CAPTCHA
+   * verification when ClientType ∈ {Mobile=8, WebApi=32, Speaker=512}. We
+   * pick WebApi because it's the semantic match for a programmatic OpenAPI
+   * client (no interactive user session in the BOS sense). BOS Designer
+   * sends WPF=1 which enforces CAPTCHA — that's why it works there and
+   * not for us when 管理中心 → 系统参数 → 登录时启用验证码 is on.
+   *
+   * Recon doc: `.scratch/recon/captcha-login.md`.
+   */
+  ClientType: number;
 }
 
 const K3_CLIENT_VERSION_PRETENDED_BY_OPENDEPLOY = '9.0.553.12';
+
+/** `Kingdee.BOS.Authentication.ClientType.WebApi` — exempt from CAPTCHA. */
+const CLIENT_TYPE_WEBAPI = 32;
 
 function pickPrimaryIPv4(): string {
   const ifaces = os.networkInterfaces();
@@ -90,5 +105,6 @@ export function buildClientInfo(): BosClientInfo {
     hostName: host,
     ipAddress: ip,
     OperationSystem: osStr,
+    ClientType: CLIENT_TYPE_WEBAPI,
   };
 }

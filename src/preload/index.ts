@@ -43,6 +43,9 @@ const api: IpcApi = {
     ipcRenderer.on('erp:connection-state', listener);
     return () => ipcRenderer.removeListener('erp:connection-state', listener);
   },
+  projectsSubmitCaptcha: (code: string) =>
+    ipcRenderer.invoke('projects:submit-captcha', code),
+  projectsRefreshCaptcha: () => ipcRenderer.invoke('projects:refresh-captcha'),
 
   pluginsList: (projectId: string) => ipcRenderer.invoke('plugins:list', projectId),
   pluginsRead: (projectId: string, name: string) =>

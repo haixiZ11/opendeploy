@@ -48,6 +48,7 @@ import {
 import { unlink } from 'node:fs/promises';
 import { extractKernelXml, parseMetaDataXml } from './rpc/metadata-xml';
 import { login } from './rpc/login';
+import { fetchCaptchaImage, captchaToDataUrl } from './rpc/captcha';
 import { getNextSequenceInt32 } from './rpc/sequence';
 import { getAllConvertPaths, getConvertRule } from './rpc/convert-rules';
 import {
@@ -160,6 +161,75 @@ import type {
 import type { ErpConnector, ListObjectsOptions } from '../types';
 
 /**
+ * Server-side login that requires a CAPTCHA. The caller (active.ts) catches
+ * this, fetches the image via the preserved session, prompts the user, then
+ * resumes via `submitCaptcha(code)`. The session that produced this error
+ * MUST be the one used to fetch the image — server binds the random code
+ * to `Session["VerificationCode"]`, keyed by ASP.NET_SessionId cookie.
+ *
+ * Triggered when `LoginResult.MessageCode === '002099000005374'`. The data
+ * center's `IsNeedValicationCode` flag (管理中心 → 系统参数 → 登录时启用验证码)
+ * is the toggle. See `.scratch/recon/captcha-login.md`.
+ */
+export class CaptchaRequiredError extends Error {
+  constructor() {
+    super('CAPTCHA required');
+    this.name = 'CaptchaRequiredError';
+  }
+}
+
+/**
+ * The 2nd-attempt login (with `validationCode`) returned a CAPTCHA-related
+ * failure. `kind` tells the caller whether to refresh the image and retry
+ * (`wrong` / `expired`) or surface as a fatal connect error (`other`).
+ */
+export class CaptchaLoginError extends Error {
+  constructor(
+    message: string,
+    public readonly kind: 'wrong' | 'expired' | 'other',
+    public readonly messageCode?: string,
+  ) {
+    super(message);
+    this.name = 'CaptchaLoginError';
+  }
+}
+
+/**
+ * Detect the three CAPTCHA-related LoginResult outcomes. We prefer the
+ * stable BOS MessageCode (immune to lcid), but fall back to message-text
+ * substrings since some K/3 builds drop MessageCode from the wire (seen
+ * on standard V9 demo 2026-05-18). The Chinese substrings come straight
+ * from `Kingdee.BOS.ServiceFacade.ServicesStub.User.UserService.CheckVaicationCode`
+ * (reachable via `.scratch/decompile/captcha-spike/UserService.cs`).
+ */
+function isCaptchaRequiredFailure(code: string | undefined, message: string | undefined): boolean {
+  if (code === '002099000005374') return true;
+  const m = (message ?? '').toLowerCase();
+  return (
+    (message ?? '').includes('请输入系统验证码') ||
+    (m.includes('captcha') && (m.includes('required') || m.includes('enter')))
+  );
+}
+
+function isCaptchaWrongFailure(code: string | undefined, message: string | undefined): boolean {
+  if (code === '002099000005375') return true;
+  const m = (message ?? '').toLowerCase();
+  return (
+    (message ?? '').includes('系统验证码输入错误') ||
+    (m.includes('captcha') && (m.includes('incorrect') || m.includes('wrong') || m.includes('invalid')))
+  );
+}
+
+function isCaptchaExpiredFailure(code: string | undefined, message: string | undefined): boolean {
+  if (code === '002099000005373') return true;
+  const m = (message ?? '').toLowerCase();
+  return (
+    (message ?? '').includes('系统验证码不存在') ||
+    (m.includes('captcha') && (m.includes('expired') || m.includes('refresh')))
+  );
+}
+
+/**
  * BOS RPC connector. One class serves all K/3 Cloud deployments
  * (V9/V10, standard/enterprise) — release/edition don't change how the
  * RPC behaves, only the SaveForIDE wire format slightly varies (handled
@@ -167,6 +237,14 @@ import type { ErpConnector, ListObjectsOptions } from '../types';
  */
 export class K3CloudConnector implements ErpConnector {
   private session: KdSession | null = null;
+
+  /**
+   * Session retained between the first failed login (CAPTCHA required) and
+   * the user's CAPTCHA submission. Keeps the ASP.NET_SessionId cookie so
+   * the server-side `Session["VerificationCode"]` written by ValidateCode.ashx
+   * matches the resubmit. Cleared once login succeeds or the user cancels.
+   */
+  private pendingSession: KdSession | null = null;
   /**
    * Lazy cache of T_META_LOOKUPCLASS entries (FormId → GUID). The full set
    * is ~1864 rows / 1 MB JSON; one fetch covers the whole session. We pay
@@ -198,21 +276,97 @@ export class K3CloudConnector implements ErpConnector {
   /** Open the BOS session. Idempotent — second call no-ops. */
   async connect(): Promise<void> {
     if (this.session) return;
-    const res = await login({
-      baseUrl: this.config.baseUrl,
-      acctId: this.config.acctId,
-      username: this.config.username,
-      password: this.config.password,
-    });
-    if (!res.isSuccess) {
-      throw new Error(`BOS login failed: ${res.message ?? 'unknown'}`);
+    const session: KdSession = { baseUrl: this.config.baseUrl };
+    const res = await login(
+      {
+        baseUrl: this.config.baseUrl,
+        acctId: this.config.acctId,
+        username: this.config.username,
+        password: this.config.password,
+      },
+      { session },
+    );
+    if (res.isSuccess) {
+      this.session = res.session;
+      return;
     }
-    this.session = res.session;
+    // 002099000005374 = "请输入系统验证码" — surface as typed error so the
+    // UI layer can fetch the image and prompt the user. The session (with
+    // ASP.NET_SessionId cookie) is preserved across the round-trip.
+    //
+    // Fallback to message-text matching: some K/3 server builds don't
+    // serialize MessageCode (empirically observed 2026-05-18 on standard
+    // V9 demo), only Message. The Chinese phrasing is fixed in the BOS
+    // resource catalog, English ports fall back to "CAPTCHA".
+    if (isCaptchaRequiredFailure(res.messageCode, res.message)) {
+      this.pendingSession = res.session;
+      throw new CaptchaRequiredError();
+    }
+    throw new Error(`BOS login failed: ${res.message ?? 'unknown'}`);
+  }
+
+  /**
+   * Fetch a fresh CAPTCHA image. Only valid while we're in the "pending
+   * captcha" state (i.e. between `connect()` throwing CaptchaRequiredError
+   * and `submitCaptcha`). The server rotates the code on each call —
+   * use this for both the initial display and refresh-on-wrong-input.
+   */
+  async fetchCaptchaImage(): Promise<{ dataUrl: string }> {
+    const sess = this.pendingSession;
+    if (!sess) {
+      throw new Error('fetchCaptchaImage: no pending captcha session');
+    }
+    const img = await fetchCaptchaImage(sess);
+    return { dataUrl: captchaToDataUrl(img) };
+  }
+
+  /**
+   * Submit the user-entered CAPTCHA code as the 2nd login attempt. On success
+   * the pending session graduates to `this.session`. On a CAPTCHA-related
+   * failure, throws `CaptchaLoginError` with a `kind` the caller uses to
+   * decide whether to refresh the image (`wrong` / `expired`) or give up.
+   */
+  async submitCaptcha(code: string): Promise<void> {
+    const sess = this.pendingSession;
+    if (!sess) {
+      throw new Error('submitCaptcha: no pending captcha session');
+    }
+    const res = await login(
+      {
+        baseUrl: this.config.baseUrl,
+        acctId: this.config.acctId,
+        username: this.config.username,
+        password: this.config.password,
+      },
+      { session: sess, validationCode: code },
+    );
+    if (res.isSuccess) {
+      this.session = res.session;
+      this.pendingSession = null;
+      return;
+    }
+    // 002099000005375 = "系统验证码输入错误" — refresh + retry.
+    // 002099000005373 = "系统验证码不存在,请刷新验证码" — server session
+    //   expired or rotated; refreshing rebinds a fresh code to the same
+    //   ASP.NET session, so this is also recoverable.
+    // Anything else: fall through as "other" and the caller surfaces the
+    // raw server message. Text-fallback covers servers that don't serialize
+    // MessageCode.
+    const kind: 'wrong' | 'expired' | 'other' =
+      isCaptchaWrongFailure(res.messageCode, res.message) ? 'wrong'
+        : isCaptchaExpiredFailure(res.messageCode, res.message) ? 'expired'
+          : 'other';
+    throw new CaptchaLoginError(
+      res.message ?? 'unknown',
+      kind,
+      res.messageCode,
+    );
   }
 
   /** Forget the cached session and any per-session caches. */
   async disconnect(): Promise<void> {
     this.session = null;
+    this.pendingSession = null;
     this.lookupObjectsByFormId = null;
     this.enumObjectsByName = null;
     this.cachedIsv = null;

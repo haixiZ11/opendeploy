@@ -146,6 +146,16 @@ export interface IpcApi {
   projectsConnectionState: () => Promise<ErpConnectionState>;
   /** Subscribe to live connection-state changes. Returns an unsubscribe fn. */
   erpOnConnectionState: (cb: (s: ErpConnectionState) => void) => () => void;
+  /**
+   * Submit the CAPTCHA code the user typed. Only valid while the connection
+   * state is `'captcha-required'`. Resolves whether the code was accepted or
+   * rejected — outcomes flow back through the `erp:connection-state` event
+   * (status transitions to `'connected'`, stays `'captcha-required'` with a
+   * new image on wrong/expired, or transitions to `'error'`).
+   */
+  projectsSubmitCaptcha: (code: string) => Promise<void>;
+  /** Rotate the CAPTCHA image. Only valid in `'captcha-required'` state. */
+  projectsRefreshCaptcha: () => Promise<void>;
 
   // ─── Plugin artifacts ──────────────────────────────────────────────
   pluginsList: (projectId: string) => Promise<PluginFile[]>;

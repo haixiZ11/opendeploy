@@ -53,7 +53,7 @@ export interface Project {
  */
 export interface ErpConnectionState {
   projectId: string | null;
-  status: 'idle' | 'connecting' | 'connected' | 'error';
+  status: 'idle' | 'connecting' | 'connected' | 'error' | 'captcha-required';
   error?: string;
   lastTestedAt?: string;
   /**
@@ -63,6 +63,15 @@ export interface ErpConnectionState {
    * pool to come up.
    */
   erpProvider?: ErpProvider;
+  /**
+   * CAPTCHA image as a `data:image/jpeg;base64,...` URL. Set when
+   * `status === 'captcha-required'`. The renderer drops this into an
+   * `<img src>` and prompts the user for the 4-character code. Each
+   * `projects:refresh-captcha` IPC rotates this to a fresh image.
+   *
+   * See `.scratch/recon/captcha-login.md` for the wire flow.
+   */
+  captchaImage?: string;
 }
 
 export interface TestConnectionResult {
