@@ -386,7 +386,15 @@ function AboutSection() {
           <div className="lbl">{t('settings.aboutVersion')}</div>
         </div>
         <div className="ctl">
-          <span className="mono small">v0.1.0-alpha.1</span>
+          <span className="mono small">v{__APP_VERSION__}</span>
+        </div>
+      </div>
+      <div className="setting-row">
+        <div>
+          <div className="lbl">{t('settings.aboutSupportedErp')}</div>
+        </div>
+        <div className="ctl">
+          <span className="small">{t('settings.aboutSupportedErpValue')}</span>
         </div>
       </div>
       <div className="setting-row">

@@ -19,6 +19,7 @@ import { SettingsPage } from '@renderer/pages/SettingsPage';
 import { SkillsPage } from '@renderer/pages/SkillsPage';
 import { ProjectsPage } from '@renderer/pages/ProjectsPage';
 import { WizardPage } from '@renderer/pages/WizardPage';
+import { CaptchaModal } from '@renderer/components/CaptchaModal';
 
 /** Short relative time label: "刚刚" / "14:23" / "4月18日". Terminal-width safe. */
 function formatConvDate(iso: string, lang: string): string {
@@ -237,9 +238,30 @@ export function App() {
           {!isWizard && (
             <StatusBar
               llmProviderId={settings.llmProvider}
-              appVersion="v0.1.0-alpha.1"
+              appVersion={`v${__APP_VERSION__}`}
             />
           )}
+
+          {(() => {
+            // Global CAPTCHA prompt — rendered above the active page so the
+            // user can activate a project from any surface (Workspace rail,
+            // Projects page, ...) and still get prompted without navigating.
+            const activeProject = projects.find(
+              (p) => p.id === projectsConnectionState.projectId,
+            );
+            return (
+              <CaptchaModal
+                open={projectsConnectionState.status === 'captcha-required'}
+                projectName={activeProject?.name}
+                baseUrl={activeProject?.bos?.baseUrl}
+                image={projectsConnectionState.captchaImage}
+                error={projectsConnectionState.error}
+                onSubmit={(code) => useProjectsStore.getState().submitCaptcha(code)}
+                onRefresh={() => useProjectsStore.getState().refreshCaptcha()}
+                onCancel={() => void useProjectsStore.getState().setActive(null)}
+              />
+            );
+          })()}
         </div>
       </ThemeProvider>
     </ErrorBoundary>

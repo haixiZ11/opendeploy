@@ -114,6 +114,7 @@ export function ProjectsPage() {
               <div style={{ display: 'grid', gap: 8 }}>
                 {projects.map((p) => {
                   const isActive = connectionState.projectId === p.id;
+                  const isFailed = isActive && connectionState.status === 'error';
                   const statusLabel = isActive
                     ? t(`projects.status.${connectionState.status}`)
                     : '';
@@ -165,6 +166,25 @@ export function ProjectsPage() {
                           {t(`projects.products.${p.erpProvider}`)}
                         </span>
                       </div>
+                      {isFailed && connectionState.error && (
+                        <div
+                          style={{
+                            border: '1px solid var(--danger)',
+                            borderRadius: 4,
+                            padding: '6px 8px',
+                            marginBottom: 8,
+                            fontSize: 12,
+                            color: 'var(--danger)',
+                            background: 'color-mix(in oklch, var(--danger) 8%, transparent)',
+                            wordBreak: 'break-word'
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>{t('projects.errorPrefix')}：</span>
+                          <span style={{ fontFamily: 'var(--font-mono)' }}>
+                            {connectionState.error}
+                          </span>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', gap: 6 }}>
                         {!isActive ? (
                           <button
@@ -173,6 +193,14 @@ export function ProjectsPage() {
                             onClick={() => void setActive(p.id)}
                           >
                             {t('projects.setActive')}
+                          </button>
+                        ) : isFailed ? (
+                          <button
+                            type="button"
+                            className="btn primary"
+                            onClick={() => void setActive(p.id)}
+                          >
+                            {t('projects.retry')}
                           </button>
                         ) : (
                           <button

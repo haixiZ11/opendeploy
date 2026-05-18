@@ -89,6 +89,8 @@
     "sectionLlm": "LLM 服务",
     "sectionAbout": "关于",
     "aboutVersion": "版本",
+    "aboutSupportedErp": "支持的 ERP",
+    "aboutSupportedErpValue": "金蝶云星空 V9.x (标准版 / 企业版)",
     "aboutLicense": "开源协议",
     "aboutSource": "源码",
     "aboutCopyright": "© 2026 乔磊",
@@ -148,7 +150,7 @@
     "password": "密码",
     "product": "产品",
     "products": {
-      "k3cloud": "金蝶云星空 企业版/标准版"
+      "k3cloud": "金蝶云星空 V9 (标准版 / 企业版)"
     },
     "encrypt": "加密连接",
     "encryptHint": "SQL Server 2022+ 默认强制加密；除非连旧版否则保持开启",
@@ -198,7 +200,19 @@
       "idle": "未连接",
       "connecting": "连接中…",
       "connected": "已连接",
-      "error": "连接失败"
+      "error": "连接失败",
+      "captcha-required": "请输入验证码"
+    },
+    "errorPrefix": "失败原因",
+    "retry": "重试",
+    "captcha": {
+      "modalTitle": "输入登录验证码",
+      "intro": "服务器启用了登录验证码,请输入图中 4 位字符 (大小写无关)。",
+      "refresh": "换一张",
+      "refreshHint": "看不清?换一张",
+      "placeholder": "4 位字符",
+      "submit": "确定",
+      "submitting": "提交中…"
     }
   },
   "skills": {
