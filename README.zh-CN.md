@@ -70,7 +70,7 @@
 
 **下载安装包(推荐)**
 
-[**👉 v0.2.0-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
+[**👉 v0.2.1-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
 
 **本地开发**
 
@@ -81,9 +81,9 @@ pnpm dev
 
 ## 当前状态
 
-**v0.2.0-alpha 已发布** —— Plan 7 系列(BOS 覆盖面扩展)完整闭环。面向 BOS 二开顾问的内部预览版,功能 / API / UX 仍可能变动。
+**v0.2.1-alpha 已发布** —— 在 v0.2.0-alpha (Plan 7 系列 BOS 覆盖面扩展) 基础上的补丁:管理中心 启用「登录时启用验证码」时的连接修复 + 连接诊断日志。面向 BOS 二开顾问的内部预览版,功能 / API / UX 仍可能变动。
 
-- 目标: 金蝶云星空 V9 私有部署版(标准版 / 企业版)
+- 目标: 金蝶云星空 V9 私有部署版(标准版 / 企业版,V8 暂不兼容 —— 登录协议差异)
 - 平台: 仅 Windows x64(macOS / Linux 视用户反馈)
 - 11 个 skill / 67 份 markdown / 14933 行行业知识
 - 887 单元/wire-replay 测试,lint clean,真服务器 smoke + agent loop e2e 全覆盖

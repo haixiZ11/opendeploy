@@ -70,7 +70,7 @@ Requires Windows 10/11 + an LLM API key.
 
 **Download the installer (recommended)**
 
-[**👉 v0.2.0-alpha installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
+[**👉 v0.2.1-alpha installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
 
 **Local development**
 
@@ -81,9 +81,9 @@ pnpm dev
 
 ## Status
 
-**v0.2.0-alpha released** — Plan 7 series (BOS coverage expansion) complete. Internal preview for BOS customization consultants. Features / API / UX may still change.
+**v0.2.1-alpha released** — patch release on top of v0.2.0-alpha (Plan 7 series, BOS coverage expansion). Connection robustness when "登录时启用验证码" is on in 管理中心, plus connect-flow diagnostics. Internal preview for BOS customization consultants; features / API / UX may still change.
 
-- Target: Kingdee Cloud Cosmic V9 on-premise (Standard / Enterprise editions)
+- Target: Kingdee Cloud Cosmic V9 on-premise (Standard / Enterprise editions; V8 not supported — login protocol differs)
 - Platform: Windows x64 only (macOS / Linux pending user feedback)
 - 11 skills / 67 markdown files / 14,933 lines of industry knowledge
 - 887 unit / wire-replay tests, lint clean, real-server smoke + agent-loop e2e covered
