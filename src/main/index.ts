@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { join } from 'node:path';
+import { release as osRelease } from 'node:os';
 import { createMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { registerLlmIpc } from './ipc-llm';
@@ -7,6 +8,8 @@ import { registerSkillIpc } from './ipc-skills';
 import { registerProjectsIpc } from './ipc-projects';
 import { registerPluginsIpc } from './ipc-plugins';
 import { seedOrRefreshKnowledge } from './skills/seed';
+import { createLogger, getLogPath } from './logger';
+import { openDeployHome } from './paths';
 
 // Must run before app `ready` so Electron's userData path uses this name.
 app.setName('OpenDeploy');
@@ -25,6 +28,16 @@ if (app.isPackaged && !process.env.BOS_BRIDGE_EXE) {
 let mainWin: BrowserWindow | null = null;
 
 app.whenReady().then(async () => {
+  // First line of every session — gives remote diagnostics a fixed anchor
+  // for version + platform without needing to ask the user.
+  const startupLogger = createLogger('app');
+  void startupLogger.info(
+    `OpenDeploy v${app.getVersion()} starting | ` +
+      `platform=${process.platform} ${osRelease()} arch=${process.arch} | ` +
+      `electron=${process.versions.electron} node=${process.versions.node} | ` +
+      `home=${openDeployHome()} | log=${getLogPath()}`,
+  );
+
   registerIpcHandlers();
   registerLlmIpc(() => mainWin);
   registerSkillIpc();
