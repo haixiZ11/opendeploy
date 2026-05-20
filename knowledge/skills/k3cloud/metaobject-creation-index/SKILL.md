@@ -100,5 +100,6 @@ BOS 写入成功后客户端**不会自动刷新**:
 | 不确定要新建还是扩展,需要决策树 | `prompts/when-to-create-new-vs-extend` |
 | 选哪个模板,场景 → 模板对照表 | `references/template-catalog` |
 | SaveForIDEV9 envelope 结构,DCXML root tag,`__paras__` 字段 | `references/wire-format` |
+| 账表建好后配过滤参数 + 报表列(Plan 7.8 工具:add_sysreport_filter_parameters / add_sysreport_columns) | `references/sysreport-filter-and-columns` |
 
 **不要一次性全拉**。每份 150-350 行,按需加载即可。
