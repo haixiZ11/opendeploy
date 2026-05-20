@@ -238,6 +238,7 @@ async function loadExtensionForSave(
         tabControls: [],
         formOperations: [],
         headEntity: '',
+        keyWordList: '',
       };
 
   return {

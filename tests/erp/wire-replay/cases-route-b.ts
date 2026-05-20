@@ -325,6 +325,128 @@ export const ROUTE_B_CASES: RouteBCase[] = [
   },
 
   {
+    name: 'plan-7_8-add-sysreport-keyword-date',
+    whyMatters:
+      'Plan 7.8 Phase 1 Task 1.2 — renderAddKeyWordField (Date kind). Wire bytes ' +
+      'mirror Phase 0 spike probe .scratch/captures/sysreport-filter-wire-probe/' +
+      'probe-date.dcxml.txt §3.A. Locks <SysReportForm action="edit">/<SQLDataSource ' +
+      'action="edit">/<SQLDataSource>/<KeyWordList> 4-layer envelope + Date-specific ' +
+      'ConditionType=2 + ValueType=4 + Field.ElementType=4 alignment (F-SR-1).',
+    input: {
+      extension: BASELINE_EXT,
+      isNew: false,
+      layoutInfoOid: 'L1',
+      sysReportEnvelopeOid: 'k_sample_sysreport_envelope_oid_x',
+      sqlDataSourceOid: 'sqlds-oid-aaaa-bbbb-cccc-dddd',
+      addKeyWordFields: [
+        {
+          kind: 'date',
+          keyWord: '@DateSample',
+          name: [{ localeId: 2052, value: '日期参数' }],
+          seq: 1,
+        },
+      ],
+    },
+  },
+
+  {
+    name: 'plan-7_8-add-sysreport-keyword-basedata',
+    whyMatters:
+      'Plan 7.8 Phase 1 Task 1.2 — BaseData kind. Mirrors §3.B. Locks both ' +
+      'AssistantID + Field.LookUpObjectID dual storage of refObjectId (F-SR-2) ' +
+      'and IsMultiSelect=True (default false dropped per §1.10 #3). ValueType=13 ' +
+      'and Field.ElementType=13 alignment.',
+    input: {
+      extension: BASELINE_EXT,
+      isNew: false,
+      layoutInfoOid: 'L1',
+      sysReportEnvelopeOid: 'k_sample_sysreport_envelope_oid_x',
+      sqlDataSourceOid: 'sqlds-oid-aaaa-bbbb-cccc-dddd',
+      addKeyWordFields: [
+        {
+          kind: 'base_data',
+          keyWord: '@CustomerSample',
+          name: [{ localeId: 2052, value: '客户参数' }],
+          seq: 1,
+          refObjectId: 'BD_Customer',
+          multiSelect: true,
+        },
+      ],
+    },
+  },
+
+  {
+    name: 'plan-7_8-add-sysreport-keyword-text',
+    whyMatters:
+      'Plan 7.8 Phase 1 Task 1.2 — Text kind. Mirrors §3.C. Locks ConditionType=0 ' +
+      '+ ValueType=1 + Field.ElementType=1. MaxLength NOT shipped (probe §3.C ' +
+      'concern — emitter TODO for Task 4 smoke). Empty AssistantID self-close.',
+    input: {
+      extension: BASELINE_EXT,
+      isNew: false,
+      layoutInfoOid: 'L1',
+      sysReportEnvelopeOid: 'k_sample_sysreport_envelope_oid_x',
+      sqlDataSourceOid: 'sqlds-oid-aaaa-bbbb-cccc-dddd',
+      addKeyWordFields: [
+        {
+          kind: 'text',
+          keyWord: '@TextSample',
+          name: [{ localeId: 2052, value: '文本参数' }],
+          seq: 1,
+        },
+      ],
+    },
+  },
+
+  {
+    name: 'plan-7_8-add-sysreport-keyword-combo',
+    whyMatters:
+      'Plan 7.8 Phase 1 Task 1.2 — Combo kind. Mirrors §3.D. Combo is the only ' +
+      'kind WITHOUT a Field.ConditionType sub-element (§2 note + §3.D). ValueType=9 ' +
+      'and Field.ElementType=9 alignment. enumTypeId rides on RptKeyWordField.AssistantID.',
+    input: {
+      extension: BASELINE_EXT,
+      isNew: false,
+      layoutInfoOid: 'L1',
+      sysReportEnvelopeOid: 'k_sample_sysreport_envelope_oid_x',
+      sqlDataSourceOid: 'sqlds-oid-aaaa-bbbb-cccc-dddd',
+      addKeyWordFields: [
+        {
+          kind: 'combo',
+          keyWord: '@ComboSample',
+          name: [{ localeId: 2052, value: '枚举参数' }],
+          seq: 1,
+          enumTypeId: 'sample_enum_type_id',
+        },
+      ],
+    },
+  },
+
+  {
+    name: 'plan-7_8-add-sysreport-keyword-decimal',
+    whyMatters:
+      'Plan 7.8 Phase 1 Task 1.2 — Decimal kind. Mirrors §3.E. ConditionType=1 ' +
+      '+ ValueType=2 + Field.ElementType=2 (the only kind sharing ElementType=2; ' +
+      'distinct from TextField=1 / DateField=4). Precision/Scale NOT shipped ' +
+      '(probe §3.E concern — emitter TODO for Task 4 smoke).',
+    input: {
+      extension: BASELINE_EXT,
+      isNew: false,
+      layoutInfoOid: 'L1',
+      sysReportEnvelopeOid: 'k_sample_sysreport_envelope_oid_x',
+      sqlDataSourceOid: 'sqlds-oid-aaaa-bbbb-cccc-dddd',
+      addKeyWordFields: [
+        {
+          kind: 'decimal',
+          keyWord: '@DecimalSample',
+          name: [{ localeId: 2052, value: '数量参数' }],
+          seq: 1,
+        },
+      ],
+    },
+  },
+
+  {
     name: 'plan-5_12_7-entry-mustinput-isshowseq',
     whyMatters:
       'Plan 5.12.7 — Entity.MustInput (int 0/1) + EntityAppearance.IsShowSeq ' +

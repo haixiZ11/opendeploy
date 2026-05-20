@@ -10,6 +10,8 @@
  * converts to DCXML strings for the SaveForIDEV9 wire format.
  */
 
+import type { BosRptKeyWordFieldElement } from './sysreport-keyword-types';
+
 /** Locale IDs observed: 2052=zh-CN, 1033=en-US, 3076=zh-HK. */
 export type LocaleId = 2052 | 1033 | 3076;
 
@@ -545,6 +547,37 @@ export interface SaveExtensionRequest {
   addFields?: BosFieldElement[];
   removeFields?: BosRemoveElement[];
   addAppearances?: BosFieldAppearance[];
+  /**
+   * Plan 7.8 Phase 1 — SysReport 过滤参数追加(RptKeyWordField).
+   * 走 `<SysReportForm action="edit" oid={sysReportEnvelopeOid}>
+   *      <SQLDataSource action="edit" oid={sqlDataSourceOid}>
+   *      <KeyWordList>{existingKeyWordListRaw}{new}</KeyWordList></SQLDataSource>
+   *    </SysReportForm>` 覆盖。
+   *
+   * Spike doc: docs/recon/2026-05-20-sysreport-filter-columns-wire.md §3.A-§3.E.
+   * 仅 SysReport(ModelTypeId=900)对象生效;Bill/BaseDataForm 用 addFields。
+   */
+  addKeyWordFields?: BosRptKeyWordFieldElement[];
+  /**
+   * Plan 7.8 — `<SysReportForm action="edit" oid={X}>` 的 oid。
+   * 为 SysReport 父对象在 FKERNELXML readback 里的 oid(通常等同 extension.formId
+   * 的 baseObjectId,但严格按 readback 取)。仅 addKeyWordFields 非空时需要。
+   */
+  sysReportEnvelopeOid?: string;
+  /**
+   * Plan 7.8 — `<SQLDataSource action="edit" oid={X}>` 的 oid。
+   * 抽自 SysReport 父对象 FKERNELXML 里的 `<SQLDataSource>` 元素自带 oid。
+   * 仅 addKeyWordFields 非空时需要。
+   */
+  sqlDataSourceOid?: string;
+  /**
+   * Plan 7.8 — 既有 `<KeyWordList>` 内容的 baseline round-trip。BOS DCXML 是
+   * baseline diff:envelope rebuild 时不带进来,服务端会 strip 整段 KeyWordList。
+   * 来源 = extractExistingExtensionElements(parentKernelXml).keyWordList。
+   * 内容是 `<KeyWordList>...</KeyWordList>` 内部的 `<RptKeyWordField>` 平铺列表
+   * (不含 `<KeyWordList>` 标签自身)。
+   */
+  existingKeyWordListRaw?: string;
   /** Plugins to register on this Form. Rendered inside `<Form><FormPlugins>...`. */
   addPlugins?: BosPluginElement[];
   /**

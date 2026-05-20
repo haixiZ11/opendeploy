@@ -65,6 +65,14 @@ export interface ExistingExtensionElements {
    * allows one HeadEntity per form). Empty string when absent.
    */
   headEntity: string;
+  /**
+   * Plan 7.8 — SysReport SQLDataSource 中 `<KeyWordList>` 内的 `<RptKeyWordField>`
+   * 平铺内容(不含 `<KeyWordList>` 外标签)。BOS DCXML 是 baseline diff:每次
+   * Save 必须把扩展已有的过滤参数全部塞回 envelope,否则服务端 strip 整段。
+   * 给 SaveExtensionRequest.existingKeyWordListRaw 用。空字符串表示父对象没有
+   * `<KeyWordList>` 或里面没条目。仅 SysReport(ModelTypeId=900)父对象有意义。
+   */
+  keyWordList: string;
 }
 
 /**
@@ -161,6 +169,7 @@ export function extractExistingExtensionElements(
     tabControls: [],
     formOperations: [],
     headEntity: '',
+    keyWordList: '',
   };
   if (!kernelXml) return empty;
 
@@ -176,6 +185,7 @@ export function extractExistingExtensionElements(
   const tabControls: string[] = [];
   const formOperations: string[] = [];
   let headEntity = '';
+  let keyWordList = '';
 
   // Fields + plugins + entries live under <Elements>.
   const elementsBody = findFirstBlockBody(stripped, 'Elements', 'Elements');
@@ -263,6 +273,16 @@ export function extractExistingExtensionElements(
     }
   }
 
+  // Plan 7.8 — SysReport `<KeyWordList>` baseline. Lives nested at
+  // `<SysReportForm><SQLDataSource><KeyWordList>`. findFirstBlockBody is
+  // depth-agnostic so a simple "first match" is enough — there's exactly
+  // one KeyWordList per SysReport. Empty when parent isn't a SysReport
+  // (BillForm/BaseDataForm/DynamicForm have no KeyWordList).
+  const keyWordListBody = findFirstBlockBody(stripped, 'KeyWordList', 'KeyWordList');
+  if (keyWordListBody !== null) {
+    keyWordList = keyWordListBody.trim();
+  }
+
   return {
     fields,
     appearances,
@@ -274,5 +294,6 @@ export function extractExistingExtensionElements(
     formOperations,
     headEntity,
     listPlugins,
+    keyWordList,
   };
 }

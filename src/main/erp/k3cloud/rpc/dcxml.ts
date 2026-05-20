@@ -44,6 +44,10 @@ import {
   SaveExtensionRequest,
   FIELD_ELEMENT_TYPE,
 } from './types';
+import {
+  BosRptKeyWordFieldElement,
+  KEYWORD_KIND_TO_WIRE,
+} from './sysreport-keyword-types';
 
 export function xmlEscape(s: string): string {
   return s
@@ -688,6 +692,147 @@ function renderRemoveBarButton(out: XmlWriter, b: BosRemoveBarButton): void {
   out.push(`</${b.appearanceKind}>`);
 }
 
+/**
+ * Plan 7.8 — render one `<RptKeyWordField>` block as a child of
+ * `<SQLDataSource><SQLDataSource><KeyWordList>`. The 5 user-facing kinds
+ * (date / base_data / text / combo / decimal) collapse to single class +
+ * ValueType + embedded `<Field>` per KEYWORD_KIND_TO_WIRE.
+ *
+ * Wire shape verified against Phase 0 spike probes:
+ *   .scratch/captures/sysreport-filter-wire-probe/probe-{date,base_data,text,combo,decimal}.dcxml.txt
+ * Recon doc: docs/recon/2026-05-20-sysreport-filter-columns-wire.md §3.A-§3.E.
+ *
+ * Child order (RptKeyWordField direct children) — driven by BOS reflection
+ * property order, byte-stable:
+ *   <Id> · <DataSource/> · <FilterBDFieldName/> · <IsAllowInput>True</…> ·
+ *   <KeyWord> · <Name>{zh-CN}</…> · <ValueType>{N}</…> · <DefaultValue.../> ·
+ *   <AssistantID.../> · [IsMultiSelect when true] · <IsAllowNull>{bool}</…> ·
+ *   <DSeq> · <CustomerBindKey/> · <Field><{KindField}/></Field> ·
+ *   <FieldAppearance><FieldAppearance/></FieldAppearance>
+ *
+ * Notes (also see §4 F-SR-1..5):
+ *   - LocaleValue `<Name>` is single-locale plain text (zh-CN) per §1.10 #7.
+ *     Phase 0 probe used single locale and that's what we mirror. Multi-locale
+ *     `<Localvalue LCID="...">` is documented but not exercised here.
+ *   - `<IsAllowInput>True</IsAllowInput>` is hardcoded — every BOS-Designer-
+ *     authored sample we captured has it True, matching the runtime default
+ *     for filter input controls.
+ *   - `<IsMustInput>` / `<IsMultiSelect>` follow §1.10 #3 "default false bools
+ *     are silently dropped". Phase 1 emitter only ships when explicitly true.
+ *   - Embedded `<Field>` reuses the existing 5.12 field-emitter approach for
+ *     type-specific sub-elements (ConditionType / LookUpObjectID etc.) but
+ *     does NOT call renderFieldElement directly: filter-Field shape is a
+ *     subset (no PropertyName, no MustInput, no ListTabIndex, no DefValue)
+ *     and reusing renderFieldElement would force schema-coupling that breaks
+ *     when filter and bill-field shapes diverge. Inline write here keeps the
+ *     wire byte-stable against §3 captures.
+ */
+function renderAddKeyWordField(out: XmlWriter, k: BosRptKeyWordFieldElement): void {
+  const wire = KEYWORD_KIND_TO_WIRE[k.kind];
+  const id = newDashedGuid();
+  const zhCn = k.name.find((n) => n.localeId === 2052)?.value ?? k.name[0]?.value ?? '';
+  const fieldName = k.keyWord.startsWith('@')
+    ? 'F' + k.keyWord.slice(1)
+    : 'F' + k.keyWord;
+  // DataSource — base_data 类型上的 RptKeyWordField.AssistantID 是引用基础资料
+  // FormId(spike §3.B `BD_Customer`). combo 类型的 enumTypeId 也走 AssistantID
+  // (spike note §3.D + sysreport-keyword-types.ts line 61). 其他类型留空。
+  const assistantId =
+    k.kind === 'base_data' ? k.refObjectId : k.kind === 'combo' ? k.enumTypeId : '';
+
+  out.push('<RptKeyWordField>');
+  out.push(`<Id>${id}</Id>`);
+  out.push('<DataSource />');
+  out.push('<FilterBDFieldName />');
+  out.push('<IsAllowInput>True</IsAllowInput>');
+  child(out, 'KeyWord', k.keyWord);
+  child(out, 'Name', zhCn);
+  child(out, 'ValueType', wire.valueType);
+  out.push('<DefaultValue />');
+  // AssistantID — non-empty only for base_data + combo per §3.B/§3.D.
+  if (assistantId) {
+    child(out, 'AssistantID', assistantId);
+  } else {
+    out.push('<AssistantID />');
+  }
+  // IsMultiSelect — base_data only, default false dropped per §1.10 #3.
+  if (k.kind === 'base_data' && k.multiSelect) {
+    out.push('<IsMultiSelect>True</IsMultiSelect>');
+  }
+  // IsAllowNull — default behavior matches probe (allowNull undefined → True),
+  // user setting false → dropped (default false in serializer view). Phase 0
+  // probe set true so the spike samples all show True.
+  if (k.allowNull !== false) {
+    out.push('<IsAllowNull>True</IsAllowNull>');
+  }
+  child(out, 'DSeq', k.seq);
+  out.push('<CustomerBindKey />');
+
+  // <Field><{KindField} ElementType="N" ElementStyle="0">...</> two-layer wrap
+  // per §1.10 #4 ComplexProperty rule. ElementType numeric matches §2 table.
+  const fieldClassName =
+    k.kind === 'date'
+      ? 'DateField'
+      : k.kind === 'base_data'
+        ? 'BaseDataField'
+        : k.kind === 'text'
+          ? 'TextField'
+          : k.kind === 'combo'
+            ? 'ComboField'
+            : 'DecimalField';
+  const fieldId = newCompactGuid();
+  out.push('<Field>');
+  out.push(`<${fieldClassName} ElementType="${wire.fieldElementType}" ElementStyle="0">`);
+  // Type-specific sub-elements per §3.A-§3.E. ConditionType placement is
+  // first within the field; Combo has no ConditionType (§3.D + §2 table note).
+  switch (k.kind) {
+    case 'date':
+      out.push('<ConditionType>2</ConditionType>');
+      break;
+    case 'base_data':
+      out.push('<ConditionType>0</ConditionType>');
+      child(out, 'LookUpObjectID', k.refObjectId);
+      break;
+    case 'text':
+      out.push('<ConditionType>0</ConditionType>');
+      // TODO Task 4 smoke — §3.C concern: probe set MaxLength=200 but it
+      // did not appear in output. Likely because TextField default already
+      // matches 200, or our property name is wrong. Re-probe via real
+      // server smoke; for now we don't ship MaxLength to stay byte-equal.
+      break;
+    case 'combo':
+      // Combo intentionally has NO <ConditionType> per §3.D and §2 note.
+      // Combo's enumTypeId rides on RptKeyWordField.AssistantID (above).
+      break;
+    case 'decimal':
+      out.push('<ConditionType>1</ConditionType>');
+      // TODO Task 4 smoke — §3.E concern: precision/scale didn't appear in
+      // probe output. Real DecimalField property names may differ; revisit
+      // when Task 4 real-server smoke can dump these on a fresh extension.
+      break;
+  }
+  child(out, 'FieldName', fieldName);
+  child(out, 'Name', zhCn);
+  out.push(`<Id>${fieldId}</Id>`);
+  child(out, 'Key', fieldName);
+  out.push(`</${fieldClassName}>`);
+  out.push('</Field>');
+
+  // FieldAppearance — empty defaults per §3.A-E probe output (Key empty,
+  // ListDefaultWidth=100, Width empty, auto-GUID Id). Same two-layer wrap.
+  const apprId = newCompactGuid();
+  out.push('<FieldAppearance>');
+  out.push('<FieldAppearance>');
+  out.push('<Key />');
+  out.push('<ListDefaultWidth>100</ListDefaultWidth>');
+  out.push('<Width />');
+  out.push(`<Id>${apprId}</Id>`);
+  out.push('</FieldAppearance>');
+  out.push('</FieldAppearance>');
+
+  out.push('</RptKeyWordField>');
+}
+
 /** Render a self-built TabControlAppearance. ElementType=1005. */
 function renderTabControlAppearance(out: XmlWriter, a: BosTabControlAppearance): void {
   const id = a.id ?? newCompactGuid();
@@ -746,6 +891,27 @@ export function buildDcxmlSource(req: SaveExtensionRequest): string {
   // so envelope-rebuild round-trips don't silently drop them. See
   // SaveExtensionRequest.existingHeadEntityRaw doc.
   if (req.existingHeadEntityRaw) out.push(req.existingHeadEntityRaw);
+  // Plan 7.8 — SysReportForm 包络承载 KeyWordList(过滤参数追加). 仅当
+  // addKeyWordFields 或 existingKeyWordListRaw 非空时输出,避免在 BillForm /
+  // BaseDataForm 扩展上误发 wire(服务端 deserializer 看见 SysReportForm 块会
+  // 直接报错 ModelTypeId 不匹配).
+  const hasKeyWordChanges =
+    (req.addKeyWordFields && req.addKeyWordFields.length > 0) ||
+    !!req.existingKeyWordListRaw;
+  if (hasKeyWordChanges) {
+    const envOid = req.sysReportEnvelopeOid ?? '';
+    const sqlOid = req.sqlDataSourceOid ?? '';
+    out.push(`<SysReportForm action="edit" oid="${xmlEscape(envOid)}">`);
+    out.push(`<SQLDataSource action="edit" oid="${xmlEscape(sqlOid)}">`);
+    out.push(`<SQLDataSource>`);
+    out.push(`<KeyWordList>`);
+    if (req.existingKeyWordListRaw) out.push(req.existingKeyWordListRaw);
+    for (const k of req.addKeyWordFields ?? []) renderAddKeyWordField(out, k);
+    out.push(`</KeyWordList>`);
+    out.push(`</SQLDataSource>`);
+    out.push(`</SQLDataSource>`);
+    out.push(`</SysReportForm>`);
+  }
   out.push(`</Elements></BusinessInfo></BusinessInfo>`);
   out.push(`<LayoutInfos><LayoutInfo action="edit" oid="${xmlEscape(req.layoutInfoOid)}">`);
   out.push(`<Appearances>`);
