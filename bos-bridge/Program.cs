@@ -176,6 +176,15 @@ namespace OpenDeploy.BosBridge
                     var ruleId = RequireString(req, "ruleId");
                     return ctx.RemoveBusinessRule(xml, ruleId);
                 }
+                case "probe_sysreport_wire":
+                {
+                    // Plan 7.8 Phase 0 Task 0.2 spike — no persistent state,
+                    // no HTTP. Builds a sample SysReportForm + RptKeyWord /
+                    // RptFilterGridField tree via reflection and returns the
+                    // canonical DCXML SerializeToString output.
+                    var kind = RequireString(req, "kind");
+                    return new { xml = ctx.ProbeSysReportWire(kind) };
+                }
                 // ── Operations + Toolbar Buttons (Plan 5.12.6) — REMOVED ──
                 //
                 // The 5 ops `list_operations` / `add_custom_operation` /
