@@ -73,6 +73,14 @@ export interface ExistingExtensionElements {
    * `<KeyWordList>` 或里面没条目。仅 SysReport(ModelTypeId=900)父对象有意义。
    */
   keyWordList: string;
+  /**
+   * Plan 7.8 Phase 2 — SysReport SQLDataSource 中 `<FieldList>` 内的
+   * `<RptFilterGridField>` 平铺内容(不含 `<FieldList>` 外标签)。同 keyWordList
+   * 一样是 baseline diff:envelope rebuild 时不带进来服务端 strip 整段 FieldList。
+   * 给 SaveExtensionRequest.existingFieldListRaw 用。空字符串表示父对象没有
+   * `<FieldList>` 或里面没条目。仅 SysReport(ModelTypeId=900)父对象有意义。
+   */
+  fieldList: string;
 }
 
 /**
@@ -170,6 +178,7 @@ export function extractExistingExtensionElements(
     formOperations: [],
     headEntity: '',
     keyWordList: '',
+    fieldList: '',
   };
   if (!kernelXml) return empty;
 
@@ -186,6 +195,7 @@ export function extractExistingExtensionElements(
   const formOperations: string[] = [];
   let headEntity = '';
   let keyWordList = '';
+  let fieldList = '';
 
   // Fields + plugins + entries live under <Elements>.
   const elementsBody = findFirstBlockBody(stripped, 'Elements', 'Elements');
@@ -283,6 +293,14 @@ export function extractExistingExtensionElements(
     keyWordList = keyWordListBody.trim();
   }
 
+  // Plan 7.8 Phase 2 — SysReport `<FieldList>` baseline. Lives at
+  // `<SysReportForm><SQLDataSource><FieldList>`, same nest level as
+  // KeyWordList. Same baseline-diff rule applies.
+  const fieldListBody = findFirstBlockBody(stripped, 'FieldList', 'FieldList');
+  if (fieldListBody !== null) {
+    fieldList = fieldListBody.trim();
+  }
+
   return {
     fields,
     appearances,
@@ -295,5 +313,6 @@ export function extractExistingExtensionElements(
     headEntity,
     listPlugins,
     keyWordList,
+    fieldList,
   };
 }

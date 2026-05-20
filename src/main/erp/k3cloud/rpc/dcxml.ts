@@ -48,6 +48,10 @@ import {
   BosRptKeyWordFieldElement,
   KEYWORD_KIND_TO_WIRE,
 } from './sysreport-keyword-types';
+import {
+  BosRptFilterGridFieldElement,
+  GRIDFIELD_CELLTYPE_TO_ELEMENTTYPE,
+} from './sysreport-gridfield-types';
 
 export function xmlEscape(s: string): string {
   return s
@@ -838,6 +842,109 @@ function renderAddKeyWordField(out: XmlWriter, k: BosRptKeyWordFieldElement): vo
   out.push('</RptKeyWordField>');
 }
 
+/**
+ * Plan 7.8 Phase 2 — render one `<RptFilterGridField>` block as a child of
+ * `<SQLDataSource><SQLDataSource><FieldList>`. The 5 user-facing cellTypes
+ * (text / integer / decimal / date / base_data_lookup) collapse to single
+ * class + embedded `<Field>` per GRIDFIELD_CELLTYPE_TO_ELEMENTTYPE.
+ *
+ * Wire shape verified against Phase 0 spike probe:
+ *   .scratch/captures/sysreport-filter-wire-probe/probe-gridfields.dcxml.txt §3.F
+ *
+ * Child order (RptFilterGridField direct children) — driven by BOS reflection
+ * property order, byte-stable per probe (text+text+integer+decimal sample):
+ *   <Id> · <Visible>True</…> · <Seq> · <Field><{KindField}/></Field> ·
+ *   <FieldAppearance><FieldAppearance/></FieldAppearance> · <DefaultColWidth>
+ *
+ * Notes:
+ *   - <Visible>True</Visible> is emitted UNCONDITIONALLY when visible is undefined
+ *     or true. Probe consistently shows `<Visible>True</Visible>` even for
+ *     default-true — Phase 0 spike §3.F. Setting visible=false emits "False".
+ *   - <DefaultColWidth> comes LAST (after FieldAppearance), per probe byte
+ *     order — distinct from KeyWordField shape.
+ *   - Embedded `<Field>` shape: <ConditionType> first (except not for combo —
+ *     combo isn't a valid gridfield cellType anyway), then type-specific
+ *     sub-elements, then FieldName / Name / Id / Key.
+ *   - text=ConditionType 0, integer=1, decimal=1 (all probe-verified).
+ *     date / base_data_lookup not in probe — use 0 (display semantic, not
+ *     range filter — distinct from KeyWordField where date=2).
+ */
+function renderAddFilterGridField(out: XmlWriter, gf: BosRptFilterGridFieldElement): void {
+  const fieldElementType = GRIDFIELD_CELLTYPE_TO_ELEMENTTYPE[gf.cellType];
+  const id = newDashedGuid();
+  const zhCn = gf.caption.find((c) => c.localeId === 2052)?.value ?? gf.caption[0]?.value ?? '';
+  const fieldId = newCompactGuid();
+  const fieldClassName =
+    gf.cellType === 'text'
+      ? 'TextField'
+      : gf.cellType === 'integer'
+        ? 'IntegerField'
+        : gf.cellType === 'decimal'
+          ? 'DecimalField'
+          : gf.cellType === 'date'
+            ? 'DateField'
+            : 'BaseDataField';
+
+  out.push('<RptFilterGridField>');
+  out.push(`<Id>${id}</Id>`);
+  // Probe consistently emits <Visible>True</Visible>; only suppress to False
+  // when caller explicitly sets visible=false.
+  out.push(`<Visible>${gf.visible === false ? 'False' : 'True'}</Visible>`);
+  child(out, 'Seq', gf.seq);
+
+  // Embedded <Field><{Kind}Field>...</{Kind}Field></Field>. ConditionType first,
+  // then type-specific, then FieldName / Name / Id / Key — per probe.
+  const conditionType =
+    gf.cellType === 'integer' || gf.cellType === 'decimal' ? 1 : 0;
+  out.push('<Field>');
+  out.push(`<${fieldClassName} ElementType="${fieldElementType}" ElementStyle="0">`);
+  child(out, 'ConditionType', conditionType);
+  switch (gf.cellType) {
+    case 'text':
+      if (gf.maxLength !== undefined && gf.maxLength !== 50) {
+        child(out, 'Editlen', gf.maxLength);
+      }
+      break;
+    case 'integer':
+      // IntegerField — no extra sub-elements (probe shows ConditionType/
+      // FieldName/Name/Id/Key only).
+      break;
+    case 'decimal':
+      if (gf.precision !== undefined) child(out, 'FieldPrecision', gf.precision);
+      if (gf.scale !== undefined) child(out, 'FieldScale', gf.scale);
+      break;
+    case 'date':
+      break;
+    case 'base_data_lookup':
+      child(out, 'LookUpObjectID', gf.refObjectId);
+      break;
+  }
+  child(out, 'FieldName', gf.fieldKey);
+  child(out, 'Name', zhCn);
+  out.push(`<Id>${fieldId}</Id>`);
+  child(out, 'Key', gf.fieldKey);
+  out.push(`</${fieldClassName}>`);
+  out.push('</Field>');
+
+  // FieldAppearance — empty defaults per probe (Key empty, ListDefaultWidth=100,
+  // Width empty, auto-GUID Id). Same two-layer wrap as KeyWordField.
+  const apprId = newCompactGuid();
+  out.push('<FieldAppearance>');
+  out.push('<FieldAppearance>');
+  out.push('<Key />');
+  out.push('<ListDefaultWidth>100</ListDefaultWidth>');
+  out.push('<Width />');
+  out.push(`<Id>${apprId}</Id>`);
+  out.push('</FieldAppearance>');
+  out.push('</FieldAppearance>');
+
+  // DefaultColWidth comes LAST per probe byte order — distinct from KeyWord
+  // shape where there's no DefaultColWidth at all.
+  if (gf.width !== undefined) child(out, 'DefaultColWidth', gf.width);
+
+  out.push('</RptFilterGridField>');
+}
+
 /** Render a self-built TabControlAppearance. ElementType=1005. */
 function renderTabControlAppearance(out: XmlWriter, a: BosTabControlAppearance): void {
   const id = a.id ?? newCompactGuid();
@@ -896,23 +1003,38 @@ export function buildDcxmlSource(req: SaveExtensionRequest): string {
   // so envelope-rebuild round-trips don't silently drop them. See
   // SaveExtensionRequest.existingHeadEntityRaw doc.
   if (req.existingHeadEntityRaw) out.push(req.existingHeadEntityRaw);
-  // Plan 7.8 — SysReportForm 包络承载 KeyWordList(过滤参数追加). 仅当
-  // addKeyWordFields 或 existingKeyWordListRaw 非空时输出,避免在 BillForm /
-  // BaseDataForm 扩展上误发 wire(服务端 deserializer 看见 SysReportForm 块会
-  // 直接报错 ModelTypeId 不匹配).
+  // Plan 7.8 — SysReportForm 包络承载 KeyWordList(过滤参数)/ FieldList(报表列).
+  // 仅当任一相关 add* / existing* 非空时输出,避免在 BillForm / BaseDataForm
+  // 扩展上误发 wire(服务端 deserializer 看见 SysReportForm 块会直接报错
+  // ModelTypeId 不匹配)。同一次调用可以同时加过滤参数 + 列(共用 envelope)。
+  //
+  // 子元素顺序:按 SQLDataSource 类属性声明顺序(spike doc §1.2),FieldList
+  // 在 KeyWordList **之前**。BOS reflection 序列化器按属性声明顺序输出,反
+  // 序列化时同样顺序敏感。
   const hasKeyWordChanges =
     (req.addKeyWordFields && req.addKeyWordFields.length > 0) ||
     !!req.existingKeyWordListRaw;
-  if (hasKeyWordChanges) {
+  const hasFieldListChanges =
+    (req.addFilterGridFields && req.addFilterGridFields.length > 0) ||
+    !!req.existingFieldListRaw;
+  if (hasKeyWordChanges || hasFieldListChanges) {
     const envOid = req.sysReportEnvelopeOid ?? '';
     const sqlOid = req.sqlDataSourceOid ?? '';
     out.push(`<SysReportForm action="edit" oid="${xmlEscape(envOid)}">`);
     out.push(`<SQLDataSource action="edit" oid="${xmlEscape(sqlOid)}">`);
     out.push(`<SQLDataSource>`);
-    out.push(`<KeyWordList>`);
-    if (req.existingKeyWordListRaw) out.push(req.existingKeyWordListRaw);
-    for (const k of req.addKeyWordFields ?? []) renderAddKeyWordField(out, k);
-    out.push(`</KeyWordList>`);
+    if (hasFieldListChanges) {
+      out.push(`<FieldList>`);
+      if (req.existingFieldListRaw) out.push(req.existingFieldListRaw);
+      for (const gf of req.addFilterGridFields ?? []) renderAddFilterGridField(out, gf);
+      out.push(`</FieldList>`);
+    }
+    if (hasKeyWordChanges) {
+      out.push(`<KeyWordList>`);
+      if (req.existingKeyWordListRaw) out.push(req.existingKeyWordListRaw);
+      for (const k of req.addKeyWordFields ?? []) renderAddKeyWordField(out, k);
+      out.push(`</KeyWordList>`);
+    }
     out.push(`</SQLDataSource>`);
     out.push(`</SQLDataSource>`);
     out.push(`</SysReportForm>`);

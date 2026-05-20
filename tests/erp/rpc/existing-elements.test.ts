@@ -15,6 +15,7 @@ describe('extractExistingExtensionElements', () => {
       formOperations: [],
       headEntity: '',
       keyWordList: '',
+      fieldList: '',
     });
   });
 
@@ -32,6 +33,7 @@ describe('extractExistingExtensionElements', () => {
       formOperations: [],
       headEntity: '',
       keyWordList: '',
+      fieldList: '',
     });
   });
 

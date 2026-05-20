@@ -11,6 +11,7 @@
  */
 
 import type { BosRptKeyWordFieldElement } from './sysreport-keyword-types';
+import type { BosRptFilterGridFieldElement } from './sysreport-gridfield-types';
 
 /** Locale IDs observed: 2052=zh-CN, 1033=en-US, 3076=zh-HK. */
 export type LocaleId = 2052 | 1033 | 3076;
@@ -578,6 +579,27 @@ export interface SaveExtensionRequest {
    * (不含 `<KeyWordList>` 标签自身)。
    */
   existingKeyWordListRaw?: string;
+  /**
+   * Plan 7.8 Phase 2 — SysReport 报表列追加(RptFilterGridField)。
+   * 跟 addKeyWordFields 同走 SysReportForm.SQLDataSource envelope:
+   *   `<SysReportForm action="edit" oid={sysReportEnvelopeOid}>
+   *      <SQLDataSource action="edit" oid={sqlDataSourceOid}>
+   *      <FieldList>{existingFieldListRaw}{new}</FieldList></SQLDataSource>
+   *    </SysReportForm>`
+   * 同一次调用可以同时带 addKeyWordFields + addFilterGridFields(共用 envelope)。
+   *
+   * Spike doc: docs/recon/2026-05-20-sysreport-filter-columns-wire.md §3.F.
+   * 仅 SysReport(ModelTypeId=900)对象生效。
+   */
+  addFilterGridFields?: BosRptFilterGridFieldElement[];
+  /**
+   * Plan 7.8 Phase 2 — 既有 `<FieldList>` 内容的 baseline round-trip。同
+   * existingKeyWordListRaw 一样是 baseline diff 必要。
+   * 来源 = extractExistingExtensionElements(parentKernelXml).fieldList。
+   * 内容是 `<FieldList>...</FieldList>` 内部的 `<RptFilterGridField>` 平铺列表
+   * (不含 `<FieldList>` 标签自身)。
+   */
+  existingFieldListRaw?: string;
   /** Plugins to register on this Form. Rendered inside `<Form><FormPlugins>...`. */
   addPlugins?: BosPluginElement[];
   /**

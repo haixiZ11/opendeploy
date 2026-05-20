@@ -454,6 +454,31 @@ export const ROUTE_B_CASES: RouteBCase[] = [
   },
 
   {
+    name: 'plan-7_8-add-sysreport-gridfields-mixed',
+    whyMatters:
+      'Plan 7.8 Phase 2 Task 2.2 — renderAddFilterGridField, 4 cellTypes mixed ' +
+      '(text/text/integer/decimal). Wire mirrors Phase 0 spike probe ' +
+      '.scratch/captures/sysreport-filter-wire-probe/probe-gridfields.dcxml.txt §3.F. ' +
+      'Locks <SysReportForm action="edit">/<SQLDataSource action="edit">/' +
+      '<SQLDataSource>/<FieldList> envelope + per-cellType embedded Field ' +
+      'ElementType (text=1 / integer=3 / decimal=2) + Visible always-emitted ' +
+      '+ DefaultColWidth-last byte order (distinct from KeyWordField shape).',
+    input: {
+      extension: BASELINE_EXT,
+      isNew: false,
+      layoutInfoOid: 'L1',
+      sysReportEnvelopeOid: 'k_sample_sysreport_envelope_oid_x',
+      sqlDataSourceOid: 'sqlds-oid-aaaa-bbbb-cccc-dddd',
+      addFilterGridFields: [
+        { cellType: 'text', fieldKey: 'FCustName', caption: [{ localeId: 2052, value: '客户名称' }], seq: 1 },
+        { cellType: 'text', fieldKey: 'FMonth', caption: [{ localeId: 2052, value: '月份' }], seq: 2 },
+        { cellType: 'integer', fieldKey: 'FOrderCount', caption: [{ localeId: 2052, value: '订单数' }], seq: 3 },
+        { cellType: 'decimal', fieldKey: 'FTotalAmount', caption: [{ localeId: 2052, value: '金额合计' }], seq: 4, precision: 18, scale: 2 },
+      ],
+    },
+  },
+
+  {
     name: 'plan-5_12_7-entry-mustinput-isshowseq',
     whyMatters:
       'Plan 5.12.7 — Entity.MustInput (int 0/1) + EntityAppearance.IsShowSeq ' +

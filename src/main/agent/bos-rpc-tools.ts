@@ -239,6 +239,7 @@ async function loadExtensionForSave(
         formOperations: [],
         headEntity: '',
         keyWordList: '',
+        fieldList: '',
       };
 
   return {
