@@ -16,6 +16,7 @@ import {
   deleteToolbarButtonTool
 } from './operation-tools';
 import { createFromTemplateTool, registerSysReportPythonPluginTool } from './create-metaobject-tools';
+import { addSysReportFilterParametersTool } from './sysreport-config-tools';
 
 /**
  * Build the K/3 Cloud tool set for the current active project. Returns an
@@ -62,7 +63,8 @@ export function buildK3CloudTools(connector?: K3CloudConnector): ToolHandler[] {
     addToolbarButtonTool(c),
     deleteToolbarButtonTool(c),
     createFromTemplateTool(c),
-    registerSysReportPythonPluginTool(c)
+    registerSysReportPythonPluginTool(c),
+    addSysReportFilterParametersTool(c)
   ];
 }
 
