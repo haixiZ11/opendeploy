@@ -304,7 +304,9 @@ export function addToolbarButtonTool(c: K3CloudConnector): ToolHandler {
         '\n- `target.kind="form"` → 加到 form **顶层主工具栏**（FormAppearance.Menu，BOS Designer 属性面板"菜单集合"）。' +
         '\n- `target.kind="list"` → 加到单据的 **列表菜单**（FormAppearance.ListMenu，BOS Designer 属性面板"列表菜单"）。客户在销售订单查询列表上看到的工具栏按钮就在这里。' +
         '\n- `target.kind="entry"` → 加到指定 entry 的工具栏，必须传 `target.entityKey`（如 "FSaleOrderEntry"）。' +
-        '\n\n**`toolbarKey`**：父级 ToolBar 的 Key。先调 `k3cloud_list_operations` 看现有 toolbar 借用即可；如果该 entry 还没初始化工具栏，list 拿不到 — 提示用户在 BOS Designer 手工加临时按钮初始化后再删（或当 v0.1 限制说明）。' +
+        '\n\n**`toolbarKey`**：' +
+        '\n- `target.kind="form"` 或 `"list"`：**省略** —— BOS 真机 capture（req-96 / smoke 2026-05-07）确认 form/list 菜单的 BarItemLink 不带 `ParentKey`，传任何 toolbarKey 都会被 wire emitter 丢掉。fresh extension 不需要 bootstrap toolbarKey。' +
+        '\n- `target.kind="entry"`：必填。先调 `k3cloud_list_operations` 看现有 toolbar 借 key；该 entry 完全没工具栏时按默认约定传 `{entityKey}_TB`（与本工具内部 `renderDefaultEntryMenu` 一致）。' +
         '\n\n**`boundOperationKey`**：必须先用 `k3cloud_add_custom_operation` 创建对应操作。本工具会内部 list 验证 — 不存在直接报错，不发送写请求。' +
         '\n\n**buttonKey 唯一**：同扩展内不可重复。' +
         '\n\n**写路径**：触发 SaveForIDEV9。BOS Designer 工具栏点刷新即可看到；客户端运行时通常需关闭客户端重登录（缓存）。',
@@ -351,10 +353,10 @@ export function addToolbarButtonTool(c: K3CloudConnector): ToolHandler {
           toolbarKey: {
             type: 'string',
             description:
-              '父级 ToolBar Key（C 标识符）。从 list_operations 取现有 toolbar 借用。'
+              "父级 ToolBar Key（C 标识符）。**仅 target.kind='entry' 必填**，form/list 模式可省（wire 输出不带 ParentKey，传任何值都不影响结果）。entry 模式：从 list_operations 取现有 toolbar 借 key；该 entry 无 toolbar 时按 `{entityKey}_TB` 约定传。"
           }
         },
-        required: ['extensionFid', 'target', 'buttonKey', 'caption', 'boundOperationKey', 'toolbarKey']
+        required: ['extensionFid', 'target', 'buttonKey', 'caption', 'boundOperationKey']
       }
     },
     async execute(args) {
@@ -362,7 +364,6 @@ export function addToolbarButtonTool(c: K3CloudConnector): ToolHandler {
       const buttonKey = requireIdentifier(args, 'buttonKey');
       const caption = requireString(args, 'caption');
       const boundOperationKey = requireIdentifier(args, 'boundOperationKey');
-      const toolbarKey = requireIdentifier(args, 'toolbarKey');
 
       // seq — int ≥ 1, default 1.
       let seq = 1;
@@ -398,6 +399,30 @@ export function addToolbarButtonTool(c: K3CloudConnector): ToolHandler {
           throw new Error("target.kind='entry' 时 target.entityKey 必填非空");
         }
         target = { kind: 'entry', entityKey: entityKey.trim() };
+      }
+
+      // toolbarKey — only entry mode physically emits it as BarItemLink's ParentKey
+      // (see rpc/dcxml.ts:660-662). form / list modes intentionally drop ParentKey
+      // per capture req-96 + smoke 2026-05-07 step 6 (memory bos_smoke_findings_2026_05_07
+      // finding 3). So make it optional in non-entry modes — eliminates the
+      // "fresh extension has no toolbar to borrow key from → bootstrap in BOS Designer"
+      // friction point hit during v0.2 alpha validation.
+      //
+      // Validation rule: required + C-identifier-checked for entry mode; for
+      // form/list, validate when supplied (back-compat with existing callers
+      // that still pass it) and fall back to buttonKey as a structurally-valid
+      // placeholder otherwise. The value never reaches the wire in form/list
+      // mode regardless.
+      let toolbarKey: string;
+      if (target.kind === 'entry') {
+        toolbarKey = requireIdentifier(args, 'toolbarKey');
+      } else {
+        const raw = args.toolbarKey;
+        if (raw === undefined || raw === null || raw === '') {
+          toolbarKey = buttonKey;
+        } else {
+          toolbarKey = requireIdentifier(args, 'toolbarKey');
+        }
       }
 
       // Pre-flight: verify boundOperationKey exists, pick up its name.
