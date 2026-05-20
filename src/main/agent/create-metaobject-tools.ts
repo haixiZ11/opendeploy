@@ -42,7 +42,10 @@ export function createFromTemplateTool(c: K3CloudConnector): ToolHandler {
         '\n' +
         'newFormId 格式约定:k + 32 位 lowercase hex(例如 k + randomUUID().replace(/-/g, ""))。\n' +
         '\n' +
-        '执行后:新对象会出现在 BOS Designer "对象浏览器"对应子系统下。客户端需要 F5 刷新或关闭客户端重登才能看到(memory bos_client_cache_relogin)。\n' +
+        '执行后:新对象会出现在 BOS Designer "对象浏览器"中。客户端需要 F5 刷新或关闭客户端重登才能看到(memory bos_client_cache_relogin)。\n' +
+        '\n' +
+        '**子系统归属注意**:模板继承会沿用模板基类自带的 subSystemId(例如 BOS_SimpleSysReport 默认在 "BAS" 平台开发子系统下),**你传入的 subSystemId 不一定是最终归属**。指引用户找新对象时要提醒:如果在你指定的子系统下没找到,也看一下 BAS(BOS 平台)子系统,或直接按 FormID 在 BOS Designer 的"按对象 ID 打开"里输入。\n' +
+        '\n' +
         '账表对象后续可用 k3cloud_register_sysreport_python_plugins 挂 Python 服务插件。',
       parameters: {
         type: 'object',
@@ -122,9 +125,14 @@ export function createFromTemplateTool(c: K3CloudConnector): ToolHandler {
           templateId: templateId.trim(),
           newFormId: newFormId.trim(),
           name: name.trim(),
+          requestedSubSystemId: subSystemId.trim(),
           message:
-            `新 metaobject ${newFormId.trim()} 已通过模板 ${templateId.trim()} 继承创建成功。` +
-            '请让用户在 BOS Designer 里 F5 刷新,或关闭客户端重登以看到新对象。',
+            `新 metaobject ${newFormId.trim()} 已通过模板 ${templateId.trim()} 继承创建成功。\n` +
+            `BOS Designer 中查看路径:\n` +
+            `  1. F5 刷新对象浏览器(或关闭客户端重登)\n` +
+            `  2. 优先在你指定的子系统(${subSystemId.trim()})下找;**找不到时再看 "BAS"(BOS 平台)子系统** —— 模板继承会沿用基类自带的子系统(如 BOS_SimpleSysReport 默认归属 BAS),你传的 subSystemId 不一定是最终落点\n` +
+            `  3. 实在找不到,用 BOS Designer "按对象 ID 打开" 输入 FormID ${newFormId.trim()} 直接打开\n` +
+            `如需把对象迁到正确子系统,在 BOS Designer 对象属性面板改 SubSystemId 后保存。`,
         },
         null,
         2,
@@ -154,6 +162,8 @@ export function registerSysReportPythonPluginTool(c: K3CloudConnector): ToolHand
         '**pyBody 要求**:完整 IronPython 2.7 源码,包含 `import clr` + `clr.AddReference("Kingdee.BOS.Core")` + `from Kingdee.BOS.Core.Report.PlugIn import AbstractSysReportServicePlugIn` + 至少一个继承自它的类定义。\n' +
         '\n' +
         '**本工具每次调用覆盖**:BOS 服务端把每次 Save 当成账表对象的完整差异。如需挂多个插件,需将旧插件内容合入新的 pyBody 或分步骤调用(后续 call 会覆盖前次)。\n' +
+        '\n' +
+        '**这就是 BOS Designer "服务插件" 节点 → "添加 Python 插件" 的程序化等价**:本工具成功返回后,**用户不需要再去 BOS Designer 手工挂插件**,只需 F5 刷新即可看到。如果你给用户写指引时还告诉他"在服务插件节点添加 Python 插件",那是错的(本次 v0.2 alpha 验收实际踩过的坑)。\n' +
         '\n' +
         '**写入后验证**:用 `k3cloud_get_object` 或 readback 检查 FKERNELXML 是否含 className。',
       parameters: {
@@ -211,8 +221,10 @@ export function registerSysReportPythonPluginTool(c: K3CloudConnector): ToolHand
           formId,
           className,
           message:
-            `Python 服务插件 "${className}" 已成功注册到账表 ${formId} 的 SysReportServicePlugins 集合。` +
-            '请让用户在 BOS Designer 里 F5 刷新,或关闭客户端重登以看到新插件。',
+            `Python 服务插件 "${className}" 已成功注册到账表 ${formId} 的 SysReportServicePlugins 集合。\n` +
+            `**插件已完整挂载到账表的服务插件节点 —— 等价于 BOS Designer "服务插件" → "添加 Python 插件" 的全部操作,用户不需要再手工挂。**\n` +
+            `用户只需在 BOS Designer 里 F5 刷新(或关闭客户端重登)就能看到新插件并生效。\n` +
+            `指引用户时不要再叫他们"在服务插件节点添加 Python 插件" —— 你已经做完了。`,
         },
         null,
         2,
