@@ -979,84 +979,138 @@ export function buildDcxmlSource(req: SaveExtensionRequest): string {
   const parts: string[] = [];
   const out: XmlWriter = { push: (s) => parts.push(s) };
 
-  out.push(`<?xml version="1.0" encoding="utf-16"?>`);
-  out.push(`<FormMetadata>`);
-  out.push(`<BusinessInfo><BusinessInfo><Elements>`);
-  const zhName = req.extension.name.find((n) => n.localeId === 2052)?.value;
-  renderFormRoot(
-    out,
-    req.extension.formId,
-    zhName,
-    req.addPlugins,
-    req.existingPluginsRaw,
-    req.addFormOperations,
-    req.existingFormOperationsRaw,
-    req.addListPlugins,
-    req.existingListPluginsRaw,
-  );
-  for (const raw of req.existingFieldsRaw ?? []) out.push(raw);
-  for (const f of req.addFields ?? []) renderFieldElement(out, f);
-  for (const raw of req.existingEntriesRaw ?? []) out.push(raw);
-  for (const e of req.addEntries ?? []) renderEntryEntity(out, e);
-  for (const r of req.removeFields ?? []) renderRemoveElement(out, r);
-  // Re-emit any prior HeadEntity overlay (extension-side EntityServiceRules)
-  // so envelope-rebuild round-trips don't silently drop them. See
-  // SaveExtensionRequest.existingHeadEntityRaw doc.
-  if (req.existingHeadEntityRaw) out.push(req.existingHeadEntityRaw);
-  // Plan 7.8 — SysReportForm 包络承载 KeyWordList(过滤参数)/ FieldList(报表列).
-  // 仅当任一相关 add* / existing* 非空时输出,避免在 BillForm / BaseDataForm
-  // 扩展上误发 wire(服务端 deserializer 看见 SysReportForm 块会直接报错
-  // ModelTypeId 不匹配)。同一次调用可以同时加过滤参数 + 列(共用 envelope)。
+  // Plan 7.8 Phase 4 hotfix — SysReport 模式分流。SysReport 扩展(ModelTypeId
+  // = 900,如 BOS_SimpleSysReport 模板继承)wire root **必须**是
+  // `<SysReportForm action="edit" oid="${baseObjectId}" ElementType="900">`,
+  // 不能套 BillForm 的 `<Form oid="BOS_BillModel">` 外壳 — BOS DcxmlSerializer
+  // 按 root element tag 派发 metadata 类型,套错 wrapper 服务端 silent-drop
+  // 整段 SysReportForm 内容(实证 .scratch/captures/sysreport-template--
+  // kf9157e0.xml = 用户 BOS Designer 改 Caption 后的存储形态)。
   //
-  // 子元素顺序:按 SQLDataSource 类属性声明顺序(spike doc §1.2),FieldList
-  // 在 KeyWordList **之前**。BOS reflection 序列化器按属性声明顺序输出,反
-  // 序列化时同样顺序敏感。
+  // 判定条件 — 显式 modelTypeId=900 **或** 携带 SysReport-only 字段
+  // (wire-replay fixtures 用 BASELINE_EXT modelTypeId=100,所以光靠
+  // modelTypeId 不够;实际 connector 调用走 900 路径)。
   const hasKeyWordChanges =
     (req.addKeyWordFields && req.addKeyWordFields.length > 0) ||
     !!req.existingKeyWordListRaw;
   const hasFieldListChanges =
     (req.addFilterGridFields && req.addFilterGridFields.length > 0) ||
     !!req.existingFieldListRaw;
-  if (hasKeyWordChanges || hasFieldListChanges) {
-    const envOid = req.sysReportEnvelopeOid ?? '';
-    const sqlOid = req.sqlDataSourceOid ?? '';
-    out.push(`<SysReportForm action="edit" oid="${xmlEscape(envOid)}">`);
-    out.push(`<SQLDataSource action="edit" oid="${xmlEscape(sqlOid)}">`);
-    out.push(`<SQLDataSource>`);
-    if (hasFieldListChanges) {
-      out.push(`<FieldList>`);
-      if (req.existingFieldListRaw) out.push(req.existingFieldListRaw);
-      for (const gf of req.addFilterGridFields ?? []) renderAddFilterGridField(out, gf);
-      out.push(`</FieldList>`);
+  const isSysReportMode =
+    req.extension.modelTypeId === 900 || hasKeyWordChanges || hasFieldListChanges;
+
+  out.push(`<?xml version="1.0" encoding="utf-16"?>`);
+  out.push(`<FormMetadata>`);
+  out.push(`<BusinessInfo><BusinessInfo><Elements>`);
+
+  if (isSysReportMode) {
+    // SysReport root envelope. `oid` = parent template id (baseObjectId);
+    // inner `<Id>` = this extension's formId. Same parent/child split as
+    // BillForm's <Form action="edit" oid="BOS_BillModel"><Id>{formId}</Id>.
+    out.push(
+      `<SysReportForm action="edit" oid="${xmlEscape(req.extension.baseObjectId)}" ElementType="900" ElementStyle="0">`,
+    );
+    out.push(`<Id>${req.extension.formId}</Id>`);
+    if (hasKeyWordChanges || hasFieldListChanges) {
+      const sqlOid = req.sqlDataSourceOid ?? '';
+      if (sqlOid) {
+        out.push(`<SQLDataSource action="edit" oid="${xmlEscape(sqlOid)}">`);
+      } else {
+        out.push(`<SQLDataSource action="edit">`);
+      }
+      out.push(`<SQLDataSource>`);
+      // Property-declared order in BOS SQLDataSource: FieldList **before**
+      // KeyWordList (spike doc §1.2). BOS reflection serializer emits in
+      // property declaration order and is order-sensitive on deserialize.
+      if (hasFieldListChanges) {
+        out.push(`<FieldList>`);
+        if (req.existingFieldListRaw) out.push(req.existingFieldListRaw);
+        for (const gf of req.addFilterGridFields ?? []) renderAddFilterGridField(out, gf);
+        out.push(`</FieldList>`);
+      }
+      if (hasKeyWordChanges) {
+        out.push(`<KeyWordList>`);
+        if (req.existingKeyWordListRaw) out.push(req.existingKeyWordListRaw);
+        for (const k of req.addKeyWordFields ?? []) renderAddKeyWordField(out, k);
+        out.push(`</KeyWordList>`);
+      }
+      out.push(`</SQLDataSource>`);
+      out.push(`</SQLDataSource>`);
     }
-    if (hasKeyWordChanges) {
-      out.push(`<KeyWordList>`);
-      if (req.existingKeyWordListRaw) out.push(req.existingKeyWordListRaw);
-      for (const k of req.addKeyWordFields ?? []) renderAddKeyWordField(out, k);
-      out.push(`</KeyWordList>`);
-    }
-    out.push(`</SQLDataSource>`);
-    out.push(`</SQLDataSource>`);
     out.push(`</SysReportForm>`);
+  } else {
+    // BillForm / BaseDataForm / DynamicForm — original Plan 5.12 / 7.6 / 7.7 path.
+    const zhName = req.extension.name.find((n) => n.localeId === 2052)?.value;
+    renderFormRoot(
+      out,
+      req.extension.formId,
+      zhName,
+      req.addPlugins,
+      req.existingPluginsRaw,
+      req.addFormOperations,
+      req.existingFormOperationsRaw,
+      req.addListPlugins,
+      req.existingListPluginsRaw,
+    );
+    for (const raw of req.existingFieldsRaw ?? []) out.push(raw);
+    for (const f of req.addFields ?? []) renderFieldElement(out, f);
+    for (const raw of req.existingEntriesRaw ?? []) out.push(raw);
+    for (const e of req.addEntries ?? []) renderEntryEntity(out, e);
+    for (const r of req.removeFields ?? []) renderRemoveElement(out, r);
+    // Re-emit any prior HeadEntity overlay (extension-side EntityServiceRules)
+    // so envelope-rebuild round-trips don't silently drop them. See
+    // SaveExtensionRequest.existingHeadEntityRaw doc.
+    if (req.existingHeadEntityRaw) out.push(req.existingHeadEntityRaw);
   }
+
   out.push(`</Elements></BusinessInfo></BusinessInfo>`);
-  out.push(`<LayoutInfos><LayoutInfo action="edit" oid="${xmlEscape(req.layoutInfoOid)}">`);
-  out.push(`<Appearances>`);
-  for (const raw of req.existingAppearancesRaw ?? []) out.push(raw);
-  for (const a of req.addAppearances ?? []) renderAppearance(out, a);
-  for (const raw of req.existingTabControlsRaw ?? []) out.push(raw);
-  for (const a of req.addTabControls ?? []) renderTabControlAppearance(out, a);
-  for (const raw of req.existingTabPagesRaw ?? []) out.push(raw);
-  for (const a of req.addTabPages ?? []) renderTabPageAppearance(out, a);
-  for (const raw of req.existingEntryAppearancesRaw ?? []) out.push(raw);
-  for (const a of req.addEntryAppearances ?? []) renderEntryEntityAppearance(out, a);
-  // BarButton overlays: each emits a `<FormAppearance|EntryEntityAppearance
-  // action="edit" oid=...>` block siblings to existingAppearancesRaw. Server
-  // applies as a baseline-diff edit on the named parent appearance.
-  for (const b of req.addBarButtons ?? []) renderAddBarButton(out, b);
-  for (const b of req.removeBarButtons ?? []) renderRemoveBarButton(out, b);
-  out.push(`</Appearances>`);
-  out.push(`</LayoutInfo></LayoutInfos>`);
+
+  // LayoutInfos emission:
+  // - Non-SysReport mode: always emit (current Plan 5.12+ shape — even an
+  //   empty <Appearances/> is round-tripped).
+  // - SysReport mode: only emit when (a) layoutInfoOid is non-empty AND
+  //   (b) there's at least one layout-side change. Matches user sample
+  //   .scratch/captures/sysreport-template--kf9157e0.xml which **omits**
+  //   <LayoutInfos> entirely on baseline-no-layout-edits saves. SysReport
+  //   parents may not carry a layoutInfoOid at all until the first layout
+  //   edit creates one — so demanding it would brick Phase 1/2 tools that
+  //   only touch SQLDataSource.
+  const hasAppearanceChanges =
+    (req.addAppearances && req.addAppearances.length > 0) ||
+    (req.existingAppearancesRaw && req.existingAppearancesRaw.length > 0) ||
+    (req.addTabControls && req.addTabControls.length > 0) ||
+    (req.existingTabControlsRaw && req.existingTabControlsRaw.length > 0) ||
+    (req.addTabPages && req.addTabPages.length > 0) ||
+    (req.existingTabPagesRaw && req.existingTabPagesRaw.length > 0) ||
+    (req.addEntryAppearances && req.addEntryAppearances.length > 0) ||
+    (req.existingEntryAppearancesRaw && req.existingEntryAppearancesRaw.length > 0) ||
+    (req.addBarButtons && req.addBarButtons.length > 0) ||
+    (req.removeBarButtons && req.removeBarButtons.length > 0);
+
+  const emitLayout = isSysReportMode
+    ? !!req.layoutInfoOid && hasAppearanceChanges
+    : true;
+
+  if (emitLayout) {
+    out.push(`<LayoutInfos><LayoutInfo action="edit" oid="${xmlEscape(req.layoutInfoOid)}">`);
+    out.push(`<Appearances>`);
+    for (const raw of req.existingAppearancesRaw ?? []) out.push(raw);
+    for (const a of req.addAppearances ?? []) renderAppearance(out, a);
+    for (const raw of req.existingTabControlsRaw ?? []) out.push(raw);
+    for (const a of req.addTabControls ?? []) renderTabControlAppearance(out, a);
+    for (const raw of req.existingTabPagesRaw ?? []) out.push(raw);
+    for (const a of req.addTabPages ?? []) renderTabPageAppearance(out, a);
+    for (const raw of req.existingEntryAppearancesRaw ?? []) out.push(raw);
+    for (const a of req.addEntryAppearances ?? []) renderEntryEntityAppearance(out, a);
+    // BarButton overlays: each emits a `<FormAppearance|EntryEntityAppearance
+    // action="edit" oid=...>` block siblings to existingAppearancesRaw. Server
+    // applies as a baseline-diff edit on the named parent appearance.
+    for (const b of req.addBarButtons ?? []) renderAddBarButton(out, b);
+    for (const b of req.removeBarButtons ?? []) renderRemoveBarButton(out, b);
+    out.push(`</Appearances>`);
+    out.push(`</LayoutInfo></LayoutInfos>`);
+  }
+
   out.push(`</FormMetadata>`);
 
   return parts.join('');

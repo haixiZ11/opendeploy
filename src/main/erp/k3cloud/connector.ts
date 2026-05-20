@@ -1827,22 +1827,29 @@ export class K3CloudConnector implements ErpConnector {
 
     const extXml = await this.getKernelXml(args.formId);
     if (!extXml) throw new Error(`SysReport ${args.formId} 无 FKERNELXML`);
-    const parentXml = await this.getKernelXml(obj.baseObjectId);
-    if (!parentXml) {
-      throw new Error(`模板 ${obj.baseObjectId} 无 FKERNELXML — 无法定位 envelope`);
-    }
 
-    const layoutInfoOid = extractLayoutInfoOid(parentXml);
-    if (!layoutInfoOid) {
-      throw new Error(`模板 ${obj.baseObjectId} 缺 layoutInfoOid`);
-    }
-    const sysReportEnvelopeOid = extractSysReportFormOid(parentXml);
-    const sqlDataSourceOid = extractSqlDataSourceOid(parentXml);
-    if (!sysReportEnvelopeOid || !sqlDataSourceOid) {
-      throw new Error(
-        `模板 ${obj.baseObjectId} 缺 SysReportForm/SQLDataSource oid — 不是有效的 SysReport 模板`,
-      );
-    }
+    // layoutInfoOid: SysReport mode tolerates empty. Phase 4 smoke 2026-05-20
+    // verified — a freshly created SysReport (no user layout edits yet) has no
+    // LayoutInfo in its FKERNELXML at all; demanding one bricks Phase 1/2
+    // tools that only touch SQLDataSource (no layout side effect). Emitter
+    // skips <LayoutInfos> wrapper when this is empty AND there are no layout
+    // changes — which is exactly the case here (add_*_filter_parameters /
+    // add_*_columns never touches Appearances).
+    const layoutInfoOid = extractLayoutInfoOid(extXml) ?? '';
+
+    // sysReportEnvelopeOid = templateId (= obj.baseObjectId). BOS extension
+    // model puts parent oid on the envelope's action="edit" element — this is
+    // what saleorder_parent.xml / sysreport-template--kf9157e0.xml both show
+    // (e.g. `<SysReportForm action="edit" oid="BOS_SimpleSysReport">`).
+    const sysReportEnvelopeOid = obj.baseObjectId;
+
+    // sqlDataSourceOid — Phase 0 spike showed SQLDataSource is a ComplexProperty
+    // child of SysReportForm. Real captures so far (kf9157e0 sample) don't show
+    // explicit SQLDataSource oid because they don't ship action="edit" on it.
+    // We try-extract from extXml; if absent, pass empty (emitter falls back to
+    // bare action="edit" without oid, which DcxmlSerializer accepts for inline
+    // ComplexProperty diff — to be validated by smoke).
+    const sqlDataSourceOid = extractSqlDataSourceOid(extXml) ?? '';
 
     const existing = extractExistingExtensionElements(extXml);
 
@@ -1921,22 +1928,15 @@ export class K3CloudConnector implements ErpConnector {
 
     const extXml = await this.getKernelXml(args.formId);
     if (!extXml) throw new Error(`SysReport ${args.formId} 无 FKERNELXML`);
-    const parentXml = await this.getKernelXml(obj.baseObjectId);
-    if (!parentXml) {
-      throw new Error(`模板 ${obj.baseObjectId} 无 FKERNELXML — 无法定位 envelope`);
-    }
 
-    const layoutInfoOid = extractLayoutInfoOid(parentXml);
-    if (!layoutInfoOid) {
-      throw new Error(`模板 ${obj.baseObjectId} 缺 layoutInfoOid`);
-    }
-    const sysReportEnvelopeOid = extractSysReportFormOid(parentXml);
-    const sqlDataSourceOid = extractSqlDataSourceOid(parentXml);
-    if (!sysReportEnvelopeOid || !sqlDataSourceOid) {
-      throw new Error(
-        `模板 ${obj.baseObjectId} 缺 SysReportForm/SQLDataSource oid — 不是有效的 SysReport 模板`,
-      );
-    }
+    // See addSysReportFilterParameters above for the rationale on these three
+    // values — same logic applies here (extract layoutInfoOid from child XML;
+    // envelope oid = templateId; SQLDataSource oid optional). Phase 4 smoke
+    // 2026-05-20: layoutInfoOid tolerated empty (emitter skips <LayoutInfos>
+    // wrapper when SysReport mode + no appearance edits).
+    const layoutInfoOid = extractLayoutInfoOid(extXml) ?? '';
+    const sysReportEnvelopeOid = obj.baseObjectId;
+    const sqlDataSourceOid = extractSqlDataSourceOid(extXml) ?? '';
 
     const existing = extractExistingExtensionElements(extXml);
 
