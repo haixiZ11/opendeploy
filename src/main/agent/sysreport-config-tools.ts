@@ -20,6 +20,7 @@
 import type { ToolHandler } from './tools';
 import type { K3CloudConnector } from '../erp/k3cloud/connector';
 import type { BosRptKeyWordFieldElement } from '../erp/k3cloud/rpc/sysreport-keyword-types';
+import type { BosRptFilterGridFieldElement } from '../erp/k3cloud/rpc/sysreport-gridfield-types';
 
 export function addSysReportFilterParametersTool(c: K3CloudConnector): ToolHandler {
   return {
@@ -106,6 +107,104 @@ export function addSysReportFilterParametersTool(c: K3CloudConnector): ToolHandl
           message:
             `已成功为 SysReport ${formId} 注册 ${result.added} 条过滤参数(写入 SysReportForm.SQLDataSource.KeyWordList)。\n` +
             `**这就是 BOS Designer "过滤参数面板 → 添加参数" 的程序化等价 — 用户不需要再去 BOS Designer 手工加,F5 刷新即可。**`,
+        },
+        null,
+        2,
+      );
+    },
+  };
+}
+
+export function addSysReportColumnsTool(c: K3CloudConnector): ToolHandler {
+  return {
+    parallelSafe: false,
+    definition: {
+      name: 'k3cloud_add_sysreport_columns',
+      description:
+        '给已有 SysReport(账表)对象追加一组报表列,等价 BOS Designer "报表模板 → 列设置" 配置。' +
+        '\n\n**前置**:formId 必须是 modelTypeId=900 的 SysReport(通常由 k3cloud_create_from_template 创建)。' +
+        '\n\n**支持 5 种 cellType**:' +
+        '\n- `text` — 文本列(maxLength 可选,默认 50;设非 50 才写入 wire)' +
+        '\n- `integer` — 整数列' +
+        '\n- `decimal` — 数字列(precision / scale 可选)' +
+        '\n- `date` — 日期列' +
+        '\n- `base_data_lookup` — 基础资料引用列(refObjectId 必填,例如 "BD_Customer";会显示客户名称而不是客户 ID)' +
+        '\n\n**与 register_sysreport_python_plugins 的协作**:`fieldKey` **必须等于** Python 报表插件 BuilderReportSqlAndTempTable 写入临时表的列名(例如 "FCustName")— 字符串严格匹配,否则该列在报表里显示为空。' +
+        '\n\n**写后用户操作**:BOS Designer F5 即可看到新列;不需要重登客户端(FieldList 是 metadata 驱动,客户端运行时实时拉取)。这就是 BOS Designer "报表模板 → 列设置" 的程序化等价,**用户不需要再去 BOS Designer 手工加**。' +
+        '\n\n**内部模型**(供调试):每条对外的 column 在 BOS wire 里是单一 `RptFilterGridField`,cellType 由内嵌 `<Field>` ElementType 决定;Caption / FieldName 反射自 Field.Name / Field.Key,wire 不重复(2026-05-20 Phase 0 spike 实证)。',
+      parameters: {
+        type: 'object',
+        properties: {
+          formId: {
+            type: 'string',
+            description: '目标 SysReport 的 FormID(k + 32 位 lowercase hex,共 33 字符)。',
+          },
+          columns: {
+            type: 'array',
+            description:
+              '一组报表列。每条是 BosRptFilterGridFieldElement(discriminated by `cellType`)。必填字段:cellType / fieldKey / caption / seq。cellType-specific 字段见工具 description。',
+            items: {
+              type: 'object',
+              description:
+                '单条报表列。cellType 取值之一:text / integer / decimal / date / base_data_lookup。cellType-specific 字段:base_data_lookup 需 refObjectId;text 可选 maxLength;decimal 可选 precision/scale。',
+            },
+          },
+        },
+        required: ['formId', 'columns'],
+      },
+    },
+    async execute(args) {
+      const formId = String(args.formId ?? '').trim();
+      if (!formId || !/^k[a-f0-9]{32}$/.test(formId)) {
+        throw new Error(
+          'k3cloud_add_sysreport_columns: formId 必须是 k + 32 位 lowercase hex 格式(共 33 字符)。',
+        );
+      }
+      const colsRaw = args.columns;
+      if (!Array.isArray(colsRaw) || colsRaw.length === 0) {
+        throw new Error(
+          'k3cloud_add_sysreport_columns: columns 必须是非空数组。',
+        );
+      }
+      // Validate cellType + base_data_lookup.refObjectId only — TS typedef +
+      // emitter cover schema details. Fail-fast so the LLM gets immediate
+      // feedback before the wire round-trip.
+      for (const c of colsRaw) {
+        const cellType = (c as { cellType?: unknown })?.cellType;
+        if (
+          cellType !== 'text' &&
+          cellType !== 'integer' &&
+          cellType !== 'decimal' &&
+          cellType !== 'date' &&
+          cellType !== 'base_data_lookup'
+        ) {
+          throw new Error(
+            `k3cloud_add_sysreport_columns: 不支持的 cellType "${String(cellType)}"。支持:text / integer / decimal / date / base_data_lookup。`,
+          );
+        }
+        if (cellType === 'base_data_lookup') {
+          const ref = (c as { refObjectId?: unknown }).refObjectId;
+          if (typeof ref !== 'string' || ref.trim() === '') {
+            throw new Error(
+              'k3cloud_add_sysreport_columns: cellType="base_data_lookup" 时 refObjectId 必填(例如 "BD_Customer")。',
+            );
+          }
+        }
+      }
+
+      const result = await c.addSysReportColumns({
+        formId,
+        filterGridFields: colsRaw as BosRptFilterGridFieldElement[],
+      });
+
+      return JSON.stringify(
+        {
+          ok: true,
+          formId,
+          added: result.added,
+          message:
+            `已成功为 SysReport ${formId} 注册 ${result.added} 条报表列(写入 SysReportForm.SQLDataSource.FieldList)。\n` +
+            `**这就是 BOS Designer "报表模板 → 列设置" 的程序化等价 — 用户不需要再去 BOS Designer 手工加,F5 刷新即可。**`,
         },
         null,
         2,

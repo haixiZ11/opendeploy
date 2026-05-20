@@ -111,6 +111,7 @@ import {
   extractSqlDataSourceOid,
 } from './rpc/layout-discovery';
 import type { BosRptKeyWordFieldElement } from './rpc/sysreport-keyword-types';
+import type { BosRptFilterGridFieldElement } from './rpc/sysreport-gridfield-types';
 import { extractExistingExtensionElements } from './rpc/existing-elements';
 import type {
   BosFormOperationElement,
@@ -1878,6 +1879,101 @@ export class K3CloudConnector implements ErpConnector {
     }
     return {
       added: args.keyWordFields.length,
+      isSuccess: result.isSuccess,
+      messageTitle: result.messageTitle ?? undefined,
+      messageDetail: result.messageDetail ?? undefined,
+    };
+  }
+
+  /**
+   * Plan 7.8 Phase 2 — append a batch of report columns (RptFilterGridField)
+   * to an existing SysReport's `<SQLDataSource><FieldList>`. Route B envelope
+   * rebuild — same path as `addSysReportFilterParameters`, but writing to
+   * FieldList (报表列) instead of KeyWordList (过滤参数).
+   *
+   * Requires:
+   *   - formId resolves to a SysReport (`modelTypeId === 900`); BillForm /
+   *     BaseDataForm extensions should use `addFields` instead.
+   *   - Parent template FKERNELXML has both `<SysReportForm oid=...>` and
+   *     `<SQLDataSource oid=...>` (used as `action="edit"` diff anchors).
+   *
+   * BOS Designer F5 reveals the new columns; no client restart required
+   * (FieldList is metadata-driven, runtime fetches every open).
+   */
+  async addSysReportColumns(args: {
+    formId: string;
+    filterGridFields: BosRptFilterGridFieldElement[];
+  }): Promise<{ added: number; isSuccess: boolean; messageTitle?: string; messageDetail?: string }> {
+    const session = this.requireSession();
+    const obj = await this.getObject(args.formId);
+    if (!obj) throw new Error(`SysReport ${args.formId} 不存在`);
+    if (obj.modelTypeId !== 900) {
+      throw new Error(
+        `${args.formId} 不是 SysReport(modelTypeId=${obj.modelTypeId},期望 900)。本工具仅支持账表对象。`,
+      );
+    }
+    if (!obj.baseObjectId) {
+      throw new Error(`SysReport ${args.formId} 缺 BaseObjectId — 无法 add columns`);
+    }
+    if (obj.subsystemId == null) {
+      throw new Error(`SysReport ${args.formId} 缺 subsystemId — 元数据不完整`);
+    }
+
+    const extXml = await this.getKernelXml(args.formId);
+    if (!extXml) throw new Error(`SysReport ${args.formId} 无 FKERNELXML`);
+    const parentXml = await this.getKernelXml(obj.baseObjectId);
+    if (!parentXml) {
+      throw new Error(`模板 ${obj.baseObjectId} 无 FKERNELXML — 无法定位 envelope`);
+    }
+
+    const layoutInfoOid = extractLayoutInfoOid(parentXml);
+    if (!layoutInfoOid) {
+      throw new Error(`模板 ${obj.baseObjectId} 缺 layoutInfoOid`);
+    }
+    const sysReportEnvelopeOid = extractSysReportFormOid(parentXml);
+    const sqlDataSourceOid = extractSqlDataSourceOid(parentXml);
+    if (!sysReportEnvelopeOid || !sqlDataSourceOid) {
+      throw new Error(
+        `模板 ${obj.baseObjectId} 缺 SysReportForm/SQLDataSource oid — 不是有效的 SysReport 模板`,
+      );
+    }
+
+    const existing = extractExistingExtensionElements(extXml);
+
+    const req: SaveExtensionRequest = {
+      extension: {
+        formId: obj.id,
+        baseObjectId: obj.baseObjectId,
+        modelTypeId: obj.modelTypeId,
+        subSystemId: obj.subsystemId,
+        name: [{ localeId: 2052, value: obj.name }],
+        isv: { devCode: this.config.devCode },
+      },
+      isNew: false,
+      layoutInfoOid,
+      sysReportEnvelopeOid,
+      sqlDataSourceOid,
+      existingFieldsRaw: existing.fields,
+      existingAppearancesRaw: existing.appearances,
+      existingPluginsRaw: existing.plugins,
+      existingEntriesRaw: existing.entries,
+      existingEntryAppearancesRaw: existing.entryAppearances,
+      existingTabPagesRaw: existing.tabPages,
+      existingTabControlsRaw: existing.tabControls,
+      existingFormOperationsRaw: existing.formOperations,
+      existingHeadEntityRaw: existing.headEntity,
+      existingKeyWordListRaw: existing.keyWordList,
+      existingFieldListRaw: existing.fieldList,
+      addFilterGridFields: args.filterGridFields,
+    };
+    const result = await saveExtension(session, req);
+    if (!result.isSuccess) {
+      throw new Error(
+        `add_sysreport_columns 失败:${result.messageTitle ?? ''} ${result.messageDetail ?? '<no detail>'}`,
+      );
+    }
+    return {
+      added: args.filterGridFields.length,
       isSuccess: result.isSuccess,
       messageTitle: result.messageTitle ?? undefined,
       messageDetail: result.messageDetail ?? undefined,
