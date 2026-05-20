@@ -379,8 +379,10 @@ export const ROUTE_B_CASES: RouteBCase[] = [
     name: 'plan-7_8-add-sysreport-keyword-text',
     whyMatters:
       'Plan 7.8 Phase 1 Task 1.2 — Text kind. Mirrors §3.C. Locks ConditionType=0 ' +
-      '+ ValueType=1 + Field.ElementType=1. MaxLength NOT shipped (probe §3.C ' +
-      'concern — emitter TODO for Task 4 smoke). Empty AssistantID self-close.',
+      '+ ValueType=1 + Field.ElementType=1. **Editlen shipped via TextField.Editlen** ' +
+      '([SimpleProperty] [DefaultValue(50)], decompile-verified ' +
+      '.scratch/decompile/field-properties/.../TextField.cs:24). Setting maxLength=200 ' +
+      'emits <Editlen>200</Editlen>; default 50 dropped. Empty AssistantID self-close.',
     input: {
       extension: BASELINE_EXT,
       isNew: false,
@@ -393,6 +395,7 @@ export const ROUTE_B_CASES: RouteBCase[] = [
           keyWord: '@TextSample',
           name: [{ localeId: 2052, value: '文本参数' }],
           seq: 1,
+          maxLength: 200,
         },
       ],
     },
@@ -427,8 +430,10 @@ export const ROUTE_B_CASES: RouteBCase[] = [
     whyMatters:
       'Plan 7.8 Phase 1 Task 1.2 — Decimal kind. Mirrors §3.E. ConditionType=1 ' +
       '+ ValueType=2 + Field.ElementType=2 (the only kind sharing ElementType=2; ' +
-      'distinct from TextField=1 / DateField=4). Precision/Scale NOT shipped ' +
-      '(probe §3.E concern — emitter TODO for Task 4 smoke).',
+      'distinct from TextField=1 / DateField=4). **FieldPrecision + FieldScale ' +
+      'shipped** via DecimalField.FieldPrecision/FieldScale [SimpleProperty] pair ' +
+      '(decompile-verified .scratch/decompile/field-properties/.../DecimalField.cs:540-544). ' +
+      'No default annotation — both emit whenever caller sets them.',
     input: {
       extension: BASELINE_EXT,
       isNew: false,
@@ -441,6 +446,8 @@ export const ROUTE_B_CASES: RouteBCase[] = [
           keyWord: '@DecimalSample',
           name: [{ localeId: 2052, value: '数量参数' }],
           seq: 1,
+          precision: 18,
+          scale: 2,
         },
       ],
     },

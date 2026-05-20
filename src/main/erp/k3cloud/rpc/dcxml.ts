@@ -795,10 +795,12 @@ function renderAddKeyWordField(out: XmlWriter, k: BosRptKeyWordFieldElement): vo
       break;
     case 'text':
       out.push('<ConditionType>0</ConditionType>');
-      // TODO Task 4 smoke — §3.C concern: probe set MaxLength=200 but it
-      // did not appear in output. Likely because TextField default already
-      // matches 200, or our property name is wrong. Re-probe via real
-      // server smoke; for now we don't ship MaxLength to stay byte-equal.
+      // Editlen — TextField's [SimpleProperty] with [DefaultValue(50)].
+      // Decompile-verified (.scratch/decompile/field-properties/Kingdee.BOS.Core.Metadata.FieldElement/TextField.cs:24).
+      // Probe initially used the wrong name "MaxLength" — corrected here.
+      if (k.maxLength !== undefined && k.maxLength !== 50) {
+        child(out, 'Editlen', k.maxLength);
+      }
       break;
     case 'combo':
       // Combo intentionally has NO <ConditionType> per §3.D and §2 note.
@@ -806,9 +808,12 @@ function renderAddKeyWordField(out: XmlWriter, k: BosRptKeyWordFieldElement): vo
       break;
     case 'decimal':
       out.push('<ConditionType>1</ConditionType>');
-      // TODO Task 4 smoke — §3.E concern: precision/scale didn't appear in
-      // probe output. Real DecimalField property names may differ; revisit
-      // when Task 4 real-server smoke can dump these on a fresh extension.
+      // FieldPrecision / FieldScale — DecimalField's [SimpleProperty] pair,
+      // no default value annotation (decompile-verified
+      // .scratch/decompile/field-properties/Kingdee.BOS.Core.Metadata.FieldElement/DecimalField.cs:540-544).
+      // Probe initially used "Precision" / "Scale" — corrected here.
+      if (k.precision !== undefined) child(out, 'FieldPrecision', k.precision);
+      if (k.scale !== undefined) child(out, 'FieldScale', k.scale);
       break;
   }
   child(out, 'FieldName', fieldName);
