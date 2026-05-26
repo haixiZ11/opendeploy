@@ -200,7 +200,7 @@ describe('addSysReportFilterParametersTool', () => {
           }
         ]
       })
-    ).rejects.toThrow(/不支持的 kind/);
+    ).rejects.toThrow(/kind.*不支持/);
 
     // Missing kind
     await expect(
@@ -210,7 +210,7 @@ describe('addSysReportFilterParametersTool', () => {
           { keyWord: '@x', name: [{ localeId: 2052, value: 'x' }], seq: 1 }
         ]
       })
-    ).rejects.toThrow(/不支持的 kind/);
+    ).rejects.toThrow(/kind.*不支持/);
 
     expect(fake.addSysReportFilterParameters).not.toHaveBeenCalled();
   });
@@ -428,7 +428,7 @@ describe('addSysReportColumnsTool', () => {
           }
         ]
       })
-    ).rejects.toThrow(/不支持的 cellType/);
+    ).rejects.toThrow(/cellType.*不支持/);
 
     // Missing cellType
     await expect(
@@ -438,7 +438,7 @@ describe('addSysReportColumnsTool', () => {
           { fieldKey: 'F1', caption: [{ localeId: 2052, value: 'x' }], seq: 1 }
         ]
       })
-    ).rejects.toThrow(/不支持的 cellType/);
+    ).rejects.toThrow(/cellType.*不支持/);
 
     expect(fake.addSysReportColumns).not.toHaveBeenCalled();
   });

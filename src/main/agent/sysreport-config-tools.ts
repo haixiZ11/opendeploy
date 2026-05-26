@@ -22,6 +22,42 @@ import type { K3CloudConnector } from '../erp/k3cloud/connector';
 import type { BosRptKeyWordFieldElement } from '../erp/k3cloud/rpc/sysreport-keyword-types';
 import type { BosRptFilterGridFieldElement } from '../erp/k3cloud/rpc/sysreport-gridfield-types';
 
+/**
+ * Fail-fast LocaleValue[] shape validation. Without this the emitter's
+ * `.find(...)` calls (dcxml.ts:737 / dcxml.ts:875) throw a cryptic
+ * "X.find is not a function" when an LLM passes a bare string instead of
+ * [{ localeId: 2052, value: "..." }] — observed in 7.8 Phase 4.2 driver
+ * (5 retries by the LLM without self-correction).
+ */
+function validateLocaleArray(v: unknown, where: string): void {
+  if (typeof v === 'string') {
+    throw new Error(
+      `${where} 必须是 LocaleValue 数组 [{localeId: 2052, value: "..."}],你传的是字符串 "${v}"。改成 [{localeId: 2052, value: "${v}"}] 即可。`,
+    );
+  }
+  if (!Array.isArray(v) || v.length === 0) {
+    throw new Error(
+      `${where} 必须是非空 LocaleValue 数组 [{localeId: 2052, value: "..."}]。`,
+    );
+  }
+  for (let j = 0; j < v.length; j += 1) {
+    const entry = v[j] as Record<string, unknown> | undefined;
+    if (!entry || typeof entry !== 'object') {
+      throw new Error(
+        `${where}[${j}] 必须是 {localeId: number, value: string} 对象。`,
+      );
+    }
+    if (typeof entry.localeId !== 'number') {
+      throw new Error(
+        `${where}[${j}].localeId 必须是数字(中文用 2052,英文 1033)。`,
+      );
+    }
+    if (typeof entry.value !== 'string' || entry.value === '') {
+      throw new Error(`${where}[${j}].value 必须是非空字符串。`);
+    }
+  }
+}
+
 export function addSysReportFilterParametersTool(c: K3CloudConnector): ToolHandler {
   return {
     parallelSafe: false,
@@ -54,11 +90,14 @@ export function addSysReportFilterParametersTool(c: K3CloudConnector): ToolHandl
           filterParameters: {
             type: 'array',
             description:
-              '一组过滤参数。每条是 BosRptKeyWordFieldElement(discriminated by `kind`)。必填字段:kind / keyWord / name / seq。kind-specific 字段见工具 description。',
+              '一组过滤参数。每条是 BosRptKeyWordFieldElement(discriminated by `kind`)。必填字段:kind / keyWord / name / seq。' +
+              '\n\n**⚠️ `name` 字段是 LocaleValue 数组,不是字符串**:`[{localeId: 2052, value: "客户"}]`,**不要**写成 `"客户"`(会炸 cryptic JS error)。中文 localeId=2052,英文 1033。',
             items: {
               type: 'object',
               description:
-                '单条过滤参数。kind 取值之一:date / base_data / text / combo / decimal。kind-specific 字段:base_data 需 refObjectId;combo 需 enumTypeId;text 可选 maxLength;decimal 可选 precision/scale;date 可选 defaultValue。',
+                '单条过滤参数。kind 取值之一:date / base_data / text / combo / decimal。' +
+                '\n通用字段:keyWord(@-prefix SQL placeholder) / **name([{localeId,value}] 数组)** / seq。' +
+                '\nkind-specific 字段:base_data 需 refObjectId;combo 需 enumTypeId;text 可选 maxLength;decimal 可选 precision/scale;date 可选 defaultValue。',
             },
           },
         },
@@ -78,9 +117,13 @@ export function addSysReportFilterParametersTool(c: K3CloudConnector): ToolHandl
           'k3cloud_add_sysreport_filter_parameters: filterParameters 必须是非空数组。',
         );
       }
-      // Validate kind only — TS typedef + emitter cover schema details.
-      for (const fp of fpRaw) {
-        const kind = (fp as { kind?: unknown })?.kind;
+      // Validate kind + name shape — fail-fast with actionable hints so LLM
+      // can self-correct rather than hitting a cryptic JS error inside the
+      // emitter (e.g. "k.name.find is not a function" when `name` arrives as
+      // a bare string).
+      for (let i = 0; i < fpRaw.length; i += 1) {
+        const fp = fpRaw[i] as Record<string, unknown>;
+        const kind = fp?.kind;
         if (
           kind !== 'date' &&
           kind !== 'base_data' &&
@@ -89,9 +132,13 @@ export function addSysReportFilterParametersTool(c: K3CloudConnector): ToolHandl
           kind !== 'decimal'
         ) {
           throw new Error(
-            `k3cloud_add_sysreport_filter_parameters: 不支持的 kind "${String(kind)}"。支持:date / base_data / text / combo / decimal。`,
+            `k3cloud_add_sysreport_filter_parameters: filterParameters[${i}].kind 不支持 "${String(kind)}"。支持:date / base_data / text / combo / decimal。`,
           );
         }
+        validateLocaleArray(
+          fp.name,
+          `k3cloud_add_sysreport_filter_parameters: filterParameters[${i}].name`,
+        );
       }
 
       const result = await c.addSysReportFilterParameters({
@@ -142,11 +189,14 @@ export function addSysReportColumnsTool(c: K3CloudConnector): ToolHandler {
           columns: {
             type: 'array',
             description:
-              '一组报表列。每条是 BosRptFilterGridFieldElement(discriminated by `cellType`)。必填字段:cellType / fieldKey / caption / seq。cellType-specific 字段见工具 description。',
+              '一组报表列。每条是 BosRptFilterGridFieldElement(discriminated by `cellType`)。必填字段:cellType / fieldKey / caption / seq。' +
+              '\n\n**⚠️ `caption` 字段是 LocaleValue 数组,不是字符串**:`[{localeId: 2052, value: "客户"}]`,**不要**写成 `"客户"`(会炸 cryptic JS error)。中文 localeId=2052,英文 1033。',
             items: {
               type: 'object',
               description:
-                '单条报表列。cellType 取值之一:text / integer / decimal / date / base_data_lookup。cellType-specific 字段:base_data_lookup 需 refObjectId;text 可选 maxLength;decimal 可选 precision/scale。',
+                '单条报表列。cellType 取值之一:text / integer / decimal / date / base_data_lookup。' +
+                '\n通用字段:fieldKey(temp table 列名) / **caption([{localeId,value}] 数组)** / seq。' +
+                '\ncellType-specific 字段:base_data_lookup 需 refObjectId;text 可选 maxLength;decimal 可选 precision/scale。',
             },
           },
         },
@@ -166,11 +216,12 @@ export function addSysReportColumnsTool(c: K3CloudConnector): ToolHandler {
           'k3cloud_add_sysreport_columns: columns 必须是非空数组。',
         );
       }
-      // Validate cellType + base_data_lookup.refObjectId only — TS typedef +
-      // emitter cover schema details. Fail-fast so the LLM gets immediate
-      // feedback before the wire round-trip.
-      for (const c of colsRaw) {
-        const cellType = (c as { cellType?: unknown })?.cellType;
+      // Validate cellType + caption shape + base_data_lookup.refObjectId.
+      // Fail-fast with actionable hints — the emitter's `gf.caption.find(...)`
+      // throws a cryptic JS error when caption arrives as a bare string.
+      for (let i = 0; i < colsRaw.length; i += 1) {
+        const col = colsRaw[i] as Record<string, unknown>;
+        const cellType = col?.cellType;
         if (
           cellType !== 'text' &&
           cellType !== 'integer' &&
@@ -179,14 +230,18 @@ export function addSysReportColumnsTool(c: K3CloudConnector): ToolHandler {
           cellType !== 'base_data_lookup'
         ) {
           throw new Error(
-            `k3cloud_add_sysreport_columns: 不支持的 cellType "${String(cellType)}"。支持:text / integer / decimal / date / base_data_lookup。`,
+            `k3cloud_add_sysreport_columns: columns[${i}].cellType 不支持 "${String(cellType)}"。支持:text / integer / decimal / date / base_data_lookup。`,
           );
         }
+        validateLocaleArray(
+          col.caption,
+          `k3cloud_add_sysreport_columns: columns[${i}].caption`,
+        );
         if (cellType === 'base_data_lookup') {
-          const ref = (c as { refObjectId?: unknown }).refObjectId;
+          const ref = col.refObjectId;
           if (typeof ref !== 'string' || ref.trim() === '') {
             throw new Error(
-              'k3cloud_add_sysreport_columns: cellType="base_data_lookup" 时 refObjectId 必填(例如 "BD_Customer")。',
+              `k3cloud_add_sysreport_columns: columns[${i}].refObjectId 必填(cellType="base_data_lookup",例如 "BD_Customer")。`,
             );
           }
         }
