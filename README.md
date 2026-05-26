@@ -51,6 +51,7 @@ Most "AI assistant tools" today look like this:
 **Kingdee Cloud Cosmic V9 customization** (BOS HTTP RPC end-to-end — never touches your database):
 
 - **Create new metaobjects via BOS template inheritance** — 27 templates across 4 ModelTypes (BillForm / BaseDataForm / SysReport / DynamicForm), wire-equivalent to BOS Designer's "New Wizard → Template Inheritance" (**new in v0.2**)
+- **SysReport (账表) filter parameters + columns config** — program-equivalent to BOS Designer "过滤参数面板" + "报表模板 → 列设置", end-to-end from `create_from_template` to runnable report (**new in v0.2.2**)
 - Extension lifecycle — create / delete / list
 - Fields — 12 types (text / number / amount / quantity / date / checkbox / combo / base-data / mnemonic / unit / formula / property-binding)
 - Entry body — EntryEntity / TabPage / TabControl: create / delete / rename
@@ -70,7 +71,7 @@ Requires Windows 10/11 + an LLM API key.
 
 **Download the installer (recommended)**
 
-[**👉 v0.2.1-alpha installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
+[**👉 v0.2.2-alpha installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
 
 **Local development**
 
@@ -81,12 +82,12 @@ pnpm dev
 
 ## Status
 
-**v0.2.1-alpha released** — patch release on top of v0.2.0-alpha (Plan 7 series, BOS coverage expansion). Connection robustness when "登录时启用验证码" is on in 管理中心, plus connect-flow diagnostics. Internal preview for BOS customization consultants; features / API / UX may still change.
+**v0.2.2-alpha released** — closes the v0.2 alpha 验收 "阶段二全手动" gap on SysReport (账表) configuration. Two new tools program-equivalent to BOS Designer "过滤参数面板 → 添加参数" and "报表模板 → 列设置" — once the agent creates a SysReport with `create_from_template`, it can wire filter parameters + columns end-to-end without handing back to the user. Also tolerates the "password expires in N days" login advisory as a warning instead of a fatal. Internal preview for BOS customization consultants; features / API / UX may still change.
 
 - Target: Kingdee Cloud Cosmic V9 on-premise (Standard / Enterprise editions; V8 not supported — login protocol differs)
 - Platform: Windows x64 only (macOS / Linux pending user feedback)
-- 11 skills / 67 markdown files / 14,933 lines of industry knowledge
-- 887 unit / wire-replay tests, lint clean, real-server smoke + agent-loop e2e covered
+- 11 skills / 69 markdown files / 15,310 lines of industry knowledge
+- 910 unit / wire-replay tests, lint clean, real-server smoke + agent-loop e2e covered
 
 ## License
 
