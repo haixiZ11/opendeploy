@@ -296,6 +296,17 @@ export class K3CloudConnector implements ErpConnector {
       this.session = res.session;
       return;
     }
+    // CheckPasswordPolicy = "密码 N 天后到期，需要现在修改密码？" — K/3 misroutes
+    // this advisory through the login failure path even though the session
+    // (aspNetSessionId + kdServiceSessionId) is fully usable. Treat as
+    // success with a warning instead of throwing. User can change password
+    // out-of-band; product keeps functioning until the actual expiry.
+    if (res.messageCode === 'CheckPasswordPolicy') {
+      this.session = res.session;
+      // eslint-disable-next-line no-console
+      console.warn(`[k3cloud] login advisory: ${res.message ?? 'password policy'}`);
+      return;
+    }
     // 002099000005374 = "请输入系统验证码" — surface as typed error so the
     // UI layer can fetch the image and prompt the user. The session (with
     // ASP.NET_SessionId cookie) is preserved across the round-trip.
