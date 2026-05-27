@@ -71,7 +71,7 @@ Requires Windows 10/11 + an LLM API key.
 
 **Download the installer (recommended)**
 
-[**👉 v0.2.2-alpha installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
+[**👉 v0.2.3-alpha installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
 
 **Local development**
 
