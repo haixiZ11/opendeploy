@@ -70,7 +70,7 @@
 
 **下载安装包(推荐)**
 
-[**👉 v0.2.1-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
+[**👉 v0.2.3-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
 
 **本地开发**
 
@@ -81,12 +81,12 @@ pnpm dev
 
 ## 当前状态
 
-**v0.2.1-alpha 已发布** —— 在 v0.2.0-alpha (Plan 7 系列 BOS 覆盖面扩展) 基础上的补丁:管理中心 启用「登录时启用验证码」时的连接修复 + 连接诊断日志。面向 BOS 二开顾问的内部预览版,功能 / API / UX 仍可能变动。
+**v0.2.3-alpha 已发布** —— 基于 v0.2.2-alpha 的小补丁。K/3「密码 N 天后到期」登录 advisory 现在按警告处理而非 fatal(此前密码临近过期就会导致整个产品打不开)。SysReport 工具在 LLM 传裸字符串而非 `[{localeId, value}]` LocaleValue 数组时给出快速失败 + 可执行提示。Plan 7.8 Phase 4.2 真 LLM 自驱 e2e (DeepSeek auto-driver) 已加入 —— 端到端覆盖 v0.2 alpha 验收场景。基于 v0.2.2-alpha 的 SysReport (账表) 配置工具构建 —— 程序等价 BOS Designer「过滤参数面板 → 添加参数」+「报表模板 → 列设置」, agent 用 `create_from_template` 建好账表后, 可端到端配置过滤参数 + 报表列, 无需切回用户手工。前序: v0.2.1-alpha (管理中心启用验证码时的连接修复 + 诊断日志) → v0.2.0-alpha (Plan 7 系列 BOS 覆盖面扩展)。面向 BOS 二开顾问的内部预览版, 功能 / API / UX 仍可能变动。
 
 - 目标: 金蝶云星空 V9 私有部署版(标准版 / 企业版,V8 暂不兼容 —— 登录协议差异)
 - 平台: 仅 Windows x64(macOS / Linux 视用户反馈)
-- 11 个 skill / 67 份 markdown / 14933 行行业知识
-- 887 单元/wire-replay 测试,lint clean,真服务器 smoke + agent loop e2e 全覆盖
+- 11 个 skill / 69 份 markdown / 15310 行行业知识
+- 910 单元/wire-replay 测试,lint clean,真服务器 smoke + agent loop e2e 全覆盖
 
 ## 开源协议
 
