@@ -82,7 +82,7 @@ pnpm dev
 
 ## Status
 
-**v0.2.2-alpha released** — closes the v0.2 alpha 验收 "阶段二全手动" gap on SysReport (账表) configuration. Two new tools program-equivalent to BOS Designer "过滤参数面板 → 添加参数" and "报表模板 → 列设置" — once the agent creates a SysReport with `create_from_template`, it can wire filter parameters + columns end-to-end without handing back to the user. Also tolerates the "password expires in N days" login advisory as a warning instead of a fatal. Internal preview for BOS customization consultants; features / API / UX may still change.
+**v0.2.3-alpha released** — polish patch on v0.2.2-alpha. K/3 "密码 N 天后到期" login advisory now tolerated as a warning instead of fatal (previously blocked the product the moment a password approached expiry). SysReport tools fail fast with actionable hints when the LLM passes bare strings instead of `[{localeId, value}]` LocaleValue arrays. Plan 7.8 Phase 4.2 真 LLM 自驱 e2e (DeepSeek auto-driver) added — covers the v0.2 alpha 验收 scenario end-to-end. Builds on v0.2.2-alpha's SysReport (账表) configuration tools — program-equivalent to BOS Designer "过滤参数面板 → 添加参数" + "报表模板 → 列设置", so once the agent creates a SysReport with `create_from_template`, it wires filter parameters + columns end-to-end without handing back to the user. Internal preview for BOS customization consultants; features / API / UX may still change.
 
 - Target: Kingdee Cloud Cosmic V9 on-premise (Standard / Enterprise editions; V8 not supported — login protocol differs)
 - Platform: Windows x64 only (macOS / Linux pending user feedback)
