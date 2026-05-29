@@ -64,7 +64,8 @@ export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
   doubao:   { id: 'doubao',   baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', defaultModel: 'doubao-seed-2-0-pro-260215', format: 'openai' },
   hunyuan:  { id: 'hunyuan',  baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', defaultModel: 'hunyuan-turbos-latest', format: 'openai' },
   minimax:  { id: 'minimax',  baseUrl: 'https://api.minimax.chat/v1', defaultModel: 'MiniMax-M2.7', format: 'openai' },
+  mimo:     { id: 'mimo',     baseUrl: 'https://api.xiaomimimo.com/v1', defaultModel: 'mimo-v2.5-pro', format: 'openai' },
   gpt:      { id: 'gpt',      baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-5.5', format: 'openai' },
-  claude:   { id: 'claude',   baseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-haiku-4-5-20251001', format: 'anthropic' },
+  claude:   { id: 'claude',   baseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-haiku-4-5-20251001', format: 'anthropic' }, // recommended in providers.ts is haiku-4.5; opus-4-7 → 4-8 (2026-05-29)
   ollama:   { id: 'ollama',   baseUrl: 'http://localhost:11434', defaultModel: 'qwen2.5-coder', format: 'ollama' }
 };
