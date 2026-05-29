@@ -54,7 +54,12 @@ interface ChatState {
   currentRequestId: string | null;
   conversationId: string | null;
 
-  sendMessage: (text: string, providerId: string, apiKey: string | undefined) => Promise<void>;
+  sendMessage: (
+    text: string,
+    providerId: string,
+    apiKey: string | undefined,
+    accessMode?: 'payg' | 'plan'
+  ) => Promise<void>;
   abort: () => Promise<void>;
   clear: () => void;
   loadConversation: (id: string) => Promise<void>;
@@ -92,7 +97,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentRequestId: null,
   conversationId: null,
 
-  sendMessage: async (text, providerId, apiKey) => {
+  sendMessage: async (text, providerId, apiKey, accessMode) => {
     const userMsg: ChatMessage = {
       id: makeChatId(), role: 'user', content: text, createdAt: new Date().toISOString()
     };
@@ -226,6 +231,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         providerId,
         apiKey,
         model: modelId,
+        accessMode,
         userMessage: text
       });
       set({ currentRequestId: requestId, conversationId: get().conversationId ?? requestId });

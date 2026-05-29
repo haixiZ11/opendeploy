@@ -129,7 +129,15 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
           .filter((s) => s && s.trim() !== '')
           .join('\n\n');
 
-        const client = createLlmClient(req.providerId);
+        // accessMode 来自 renderer (跟 apiKey 同源),baseUrlOverride 走 settings
+        // (用户在 "高级" 抽屉里配的,跟 provider id 1:1 对应)。
+        // 同一份 settings 下面 rawDump 也复用,避免双读。
+        const persistedSettings = await loadSettings();
+        const baseUrlOverride = persistedSettings.apiBaseUrlOverride?.[req.providerId];
+        const client = createLlmClient(req.providerId, {
+          accessMode: req.accessMode,
+          baseUrlOverride
+        });
         // conversationId for trace stitching — fall back to requestId for
         // brand-new conversations (renderer attaches `conversationId` only
         // on follow-up turns, but trace records still need a join key).
@@ -140,8 +148,7 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
         // loop will invoke the factory once per LLM call. Always-on prune
         // after the first turn keeps the dir size bounded without manual
         // cleanup; the prune is fire-and-forget so it doesn't slow the turn.
-        const settings = await loadSettings();
-        const rawDumpOn = settings.llmRawDump !== false;
+        const rawDumpOn = persistedSettings.llmRawDump !== false;
         const rawCaptureFactory = rawDumpOn
           ? (turn: number) =>
               createFileRawCapture({ conversationId: traceConvId, turn })

@@ -24,9 +24,12 @@ export function WizardPage({ onFinish }: WizardPageProps) {
   const [step, setStep] = useState(0);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [accessMode, setAccessMode] = useState<'payg' | 'plan'>('payg');
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const setLlmProvider = useSettingsStore((s) => s.setLlmProvider);
   const setApiKey = useSettingsStore((s) => s.setApiKey);
+  const setPlanApiKey = useSettingsStore((s) => s.setPlanApiKey);
+  const setApiAccessMode = useSettingsStore((s) => s.setApiAccessMode);
   const setModel = useSettingsStore((s) => s.setModel);
 
   const selectedProviderObj = selectedProvider ? PROVIDER_BY_ID[selectedProvider] : undefined;
@@ -42,6 +45,15 @@ export function WizardPage({ onFinish }: WizardPageProps) {
     setSelectedModelId(m?.id ?? '');
   }, [selectedProvider]);
 
+  // Reset access mode when provider switches — a provider may not advertise
+  // a plan endpoint at all, so always start at 'payg' (safe default).
+  // Also clear the key input on switches so a key meant for one mode/provider
+  // doesn't accidentally get saved under another (e.g. tp-xxxx into apiKeys).
+  useEffect(() => {
+    setAccessMode('payg');
+    setApiKeyInput('');
+  }, [selectedProvider]);
+
   // Stepper only covers the two "real" onboarding steps — Step 0 is a hero.
   const steps = [t('wizard.stepProvider'), t('wizard.stepDone')];
   const stepperIndex = step - 1; // -1 on step 0 = hidden
@@ -53,7 +65,16 @@ export function WizardPage({ onFinish }: WizardPageProps) {
     if (selectedProvider) {
       await setLlmProvider(selectedProvider);
       if (selectedProvider !== 'ollama' && apiKeyInput.trim()) {
-        await setApiKey(selectedProvider, apiKeyInput.trim());
+        // Route the key into the correct bucket so future loads pick it up
+        // when the same mode is active. Plan/payg keys are kept independent
+        // (e.g. small users on payg can keep their sk-xxxx untouched after
+        // experimenting with a plan tp-xxxx).
+        if (accessMode === 'plan') {
+          await setPlanApiKey(selectedProvider, apiKeyInput.trim());
+        } else {
+          await setApiKey(selectedProvider, apiKeyInput.trim());
+        }
+        await setApiAccessMode(selectedProvider, accessMode);
       }
       if (selectedProvider !== 'ollama' && selectedModelId) {
         await setModel(selectedProvider, selectedModelId);
@@ -164,6 +185,68 @@ export function WizardPage({ onFinish }: WizardPageProps) {
                         <div className="hint">{t('settings.ollamaNoKey')}</div>
                       ) : (
                         <>
+                          {/* Access-mode toggle: only shown for providers that
+                              actually publish a token-plan endpoint. Hiding it
+                              for non-plan providers (DeepSeek/GPT/Claude/…)
+                              avoids confusing 90 % of users with a control
+                              they have no use for. */}
+                          {selectedProviderObj?.tokenPlan && (
+                            <div style={{ marginBottom: 12 }}>
+                              <label
+                                style={{
+                                  display: 'block',
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  marginBottom: 6
+                                }}
+                              >
+                                {t('settings.accessMode.label')}
+                              </label>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  type="button"
+                                  className={`btn${accessMode === 'payg' ? ' primary' : ''}`}
+                                  onClick={() => {
+                                    setAccessMode('payg');
+                                    setApiKeyInput('');
+                                  }}
+                                >
+                                  {t('settings.accessMode.payg')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`btn${accessMode === 'plan' ? ' primary' : ''}`}
+                                  onClick={() => {
+                                    setAccessMode('plan');
+                                    setApiKeyInput('');
+                                  }}
+                                >
+                                  {t('settings.accessMode.plan')}
+                                </button>
+                              </div>
+                              <div
+                                className="hint"
+                                style={{ marginTop: 6, fontSize: 12 }}
+                              >
+                                {accessMode === 'plan'
+                                  ? t('settings.accessMode.planHint')
+                                  : t('settings.accessMode.paygHint')}
+                                {accessMode === 'plan' && selectedProviderObj.tokenPlan.docsUrl && (
+                                  <>
+                                    {'  '}
+                                    <a
+                                      href={selectedProviderObj.tokenPlan.docsUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{ color: 'var(--accent-deep)' }}
+                                    >
+                                      {t('settings.accessMode.planDocsLink')}
+                                    </a>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <label
                             style={{
                               display: 'block',
@@ -172,13 +255,19 @@ export function WizardPage({ onFinish }: WizardPageProps) {
                               marginBottom: 6
                             }}
                           >
-                            {t('settings.apiKey')}
+                            {accessMode === 'plan'
+                              ? t('settings.planApiKey')
+                              : t('settings.apiKey')}
                           </label>
                           <input
                             type="password"
                             value={apiKeyInput}
                             onChange={(e) => setApiKeyInput(e.target.value)}
-                            placeholder={t('settings.apiKeyPlaceholder')}
+                            placeholder={
+                              accessMode === 'plan'
+                                ? t('settings.planApiKeyPlaceholder')
+                                : t('settings.apiKeyPlaceholder')
+                            }
                             style={{
                               width: '100%',
                               padding: '8px 12px',

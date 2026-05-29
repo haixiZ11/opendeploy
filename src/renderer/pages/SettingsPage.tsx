@@ -159,6 +159,9 @@ function LlmSection() {
   const settings = useSettingsStore((s) => s.settings);
   const setLlmProvider = useSettingsStore((s) => s.setLlmProvider);
   const setApiKey = useSettingsStore((s) => s.setApiKey);
+  const setPlanApiKey = useSettingsStore((s) => s.setPlanApiKey);
+  const setApiAccessMode = useSettingsStore((s) => s.setApiAccessMode);
+  const setApiBaseUrlOverride = useSettingsStore((s) => s.setApiBaseUrlOverride);
   const setModel = useSettingsStore((s) => s.setModel);
   const setOllamaModelInput = useSettingsStore((s) => s.setOllamaModelInput);
 
@@ -170,6 +173,17 @@ function LlmSection() {
   const [apiKeyInput, setApiKeyInput] = useState<string>(
     settings.apiKeys?.[initialProviderId] ?? ''
   );
+  const [planKeyInput, setPlanKeyInput] = useState<string>(
+    settings.planApiKeys?.[initialProviderId] ?? ''
+  );
+  const [baseUrlInput, setBaseUrlInput] = useState<string>(
+    settings.apiBaseUrlOverride?.[initialProviderId] ?? ''
+  );
+  const [advancedOpen, setAdvancedOpen] = useState(
+    !!settings.apiBaseUrlOverride?.[initialProviderId]
+  );
+  const activeMode: 'payg' | 'plan' =
+    settings.apiAccessMode?.[selectedProviderId] ?? 'payg';
   const [saved, setSaved] = useState(false);
 
   const [selectedModelId, setSelectedModelId] = useState<string>(
@@ -207,14 +221,38 @@ function LlmSection() {
   const handleProviderSelect = async (provider: LlmProvider): Promise<void> => {
     setSelectedProviderId(provider.id);
     setApiKeyInput(settings.apiKeys?.[provider.id] ?? '');
+    setPlanKeyInput(settings.planApiKeys?.[provider.id] ?? '');
+    setBaseUrlInput(settings.apiBaseUrlOverride?.[provider.id] ?? '');
+    setAdvancedOpen(!!settings.apiBaseUrlOverride?.[provider.id]);
     setSaved(false);
     await setLlmProvider(provider.id);
   };
 
-  const handleSave = async (): Promise<void> => {
+  const handleSavePayg = async (): Promise<void> => {
     await setApiKey(selectedProviderId, apiKeyInput);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleSavePlan = async (): Promise<void> => {
+    await setPlanApiKey(selectedProviderId, planKeyInput);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleModeChange = async (mode: 'payg' | 'plan'): Promise<void> => {
+    await setApiAccessMode(selectedProviderId, mode);
+  };
+
+  const handleSaveBaseUrl = async (): Promise<void> => {
+    await setApiBaseUrlOverride(selectedProviderId, baseUrlInput);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleResetBaseUrl = async (): Promise<void> => {
+    setBaseUrlInput('');
+    await setApiBaseUrlOverride(selectedProviderId, '');
   };
 
   const isOllama = selectedProviderId === 'ollama';
@@ -338,35 +376,202 @@ function LlmSection() {
             {t('settings.ollamaNoKey')}
           </p>
         ) : (
-          <div className="setting-row" style={{ borderBottom: 'none' }}>
-            <div>
-              <div className="lbl">
-                {t('settings.apiKey')} ({selectedProviderId})
+          <>
+            {/* Mode toggle — only render when this provider publishes a plan
+                endpoint. For everyone else (DeepSeek/GPT/Claude/…) we keep
+                the page lean and never surface the concept. */}
+            {provider?.tokenPlan && (
+              <div className="setting-row">
+                <div>
+                  <div className="lbl">{t('settings.accessMode.label')}</div>
+                  <div className="muted small" style={{ marginTop: 4, lineHeight: 1.5 }}>
+                    {activeMode === 'plan'
+                      ? t('settings.accessMode.planHint')
+                      : t('settings.accessMode.paygHint')}
+                    {activeMode === 'plan' && provider.tokenPlan.docsUrl && (
+                      <>
+                        {'  '}
+                        <a
+                          href={provider.tokenPlan.docsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: 'var(--accent-deep)' }}
+                        >
+                          {t('settings.accessMode.planDocsLink')}
+                        </a>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="ctl" style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    className={`btn${activeMode === 'payg' ? ' primary' : ''}`}
+                    onClick={() => {
+                      void handleModeChange('payg');
+                    }}
+                  >
+                    {t('settings.accessMode.payg')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn${activeMode === 'plan' ? ' primary' : ''}`}
+                    onClick={() => {
+                      void handleModeChange('plan');
+                    }}
+                  >
+                    {t('settings.accessMode.plan')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Pay-as-you-go key row — always shown for non-Ollama providers. */}
+            <div className="setting-row">
+              <div>
+                <div className="lbl">
+                  {t('settings.apiKey')} ({selectedProviderId})
+                  {provider?.tokenPlan && activeMode === 'payg' && (
+                    <span className="chip accent" style={{ marginLeft: 8, fontSize: 10 }}>
+                      active
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="ctl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => {
+                    setApiKeyInput(e.target.value);
+                    setSaved(false);
+                  }}
+                  placeholder={
+                    provider?.tokenPlan
+                      ? t('settings.paygApiKeyPlaceholder')
+                      : t('settings.apiKeyPlaceholder')
+                  }
+                  style={{ minWidth: 260 }}
+                />
+                <button
+                  type="button"
+                  className="btn primary lg"
+                  onClick={() => {
+                    void handleSavePayg();
+                  }}
+                >
+                  {t('settings.save')}
+                </button>
               </div>
             </div>
-            <div className="ctl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                type="password"
-                value={apiKeyInput}
-                onChange={(e) => {
-                  setApiKeyInput(e.target.value);
-                  setSaved(false);
-                }}
-                placeholder={t('settings.apiKeyPlaceholder')}
-                style={{ minWidth: 260 }}
-              />
+
+            {/* Plan key row — only when this provider has a plan endpoint.
+                Keeping both keys editable side-by-side (instead of swapping
+                in place when mode changes) lets users keep both buckets
+                filled and flip the mode toggle without re-pasting keys. */}
+            {provider?.tokenPlan && (
+              <div className="setting-row">
+                <div>
+                  <div className="lbl">
+                    {t('settings.planApiKey')} ({selectedProviderId})
+                    {activeMode === 'plan' && (
+                      <span className="chip accent" style={{ marginLeft: 8, fontSize: 10 }}>
+                        active
+                      </span>
+                    )}
+                  </div>
+                  {provider.tokenPlan.keyPrefix &&
+                    planKeyInput.trim() !== '' &&
+                    !planKeyInput.trim().startsWith(provider.tokenPlan.keyPrefix) && (
+                      <div className="muted small" style={{ marginTop: 4, color: 'var(--warn, #b58900)' }}>
+                        {t('settings.planKeyMismatchHint', { prefix: provider.tokenPlan.keyPrefix })}
+                      </div>
+                    )}
+                </div>
+                <div className="ctl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="password"
+                    value={planKeyInput}
+                    onChange={(e) => {
+                      setPlanKeyInput(e.target.value);
+                      setSaved(false);
+                    }}
+                    placeholder={t('settings.planApiKeyPlaceholder')}
+                    style={{ minWidth: 260 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn primary lg"
+                    onClick={() => {
+                      void handleSavePlan();
+                    }}
+                  >
+                    {t('settings.save')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {saved && (
+              <div style={{ marginTop: 6 }}>
+                <span className="chip good">{t('settings.saved')}</span>
+              </div>
+            )}
+
+            {/* Advanced — base URL override.
+                Folded by default; auto-expands if a value is already set so
+                returning users see their override immediately. */}
+            <div style={{ marginTop: 16 }}>
               <button
                 type="button"
-                className="btn primary lg"
-                onClick={() => {
-                  void handleSave();
-                }}
+                className="btn"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                style={{ fontSize: 12 }}
               >
-                {t('settings.save')}
+                {advancedOpen ? '▾' : '▸'} {t('settings.advanced.header')}
               </button>
-              {saved && <span className="chip good">{t('settings.saved')}</span>}
+              {advancedOpen && (
+                <div className="setting-row" style={{ borderBottom: 'none', alignItems: 'flex-start', marginTop: 8 }}>
+                  <div>
+                    <div className="lbl">{t('settings.advanced.baseUrlLabel')}</div>
+                    <div className="muted small" style={{ marginTop: 4, lineHeight: 1.5 }}>
+                      {t('settings.advanced.baseUrlHint')}
+                    </div>
+                  </div>
+                  <div className="ctl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={baseUrlInput}
+                      onChange={(e) => {
+                        setBaseUrlInput(e.target.value);
+                        setSaved(false);
+                      }}
+                      placeholder={t('settings.advanced.baseUrlPlaceholder')}
+                      style={{ minWidth: 320, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => {
+                        void handleSaveBaseUrl();
+                      }}
+                    >
+                      {t('settings.save')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        void handleResetBaseUrl();
+                      }}
+                    >
+                      {t('settings.advanced.resetDefault')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          </>
         )}
       </section>
     </>

@@ -42,6 +42,15 @@ export interface LlmProvider {
   models: LlmModel[];
   /** Ollama only — 默认填到 input 框的型号. */
   modelInputDefault?: string;
+  /**
+   * Token Plan / Coding Plan UI 元数据。仅 UI 用 (docsUrl 帮助链接、keyPrefix
+   * 软校验提示)。base URL 留在 main 端 `PROVIDER_CONFIGS[id].tokenPlan.baseUrl`,
+   * 是 single source of truth。两端同步靠 tests/llm/provider-sync.test.ts 护栏。
+   */
+  tokenPlan?: {
+    keyPrefix?: string;
+    docsUrl?: string;
+  };
 }
 
 export const PROVIDERS: LlmProvider[] = [
@@ -64,7 +73,11 @@ export const PROVIDERS: LlmProvider[] = [
       { id: 'qwen3.6-plus',     label: 'Qwen3.6 Plus',     contextWindow: 1_000_000, maxOutput: 8_192, pricing: '¥2 / 12',    hint: '1M · 主力' },
       { id: 'qwen3-max',        label: 'Qwen3 Max',        contextWindow: 256_000,   maxOutput: 8_192, pricing: '¥2.5 / 10',  hint: '256K · 上一代' },
       { id: 'qwen3-coder-plus', label: 'Qwen3 Coder Plus', contextWindow: 1_000_000, maxOutput: 8_192, pricing: '¥4 / 16',    hint: '1M · 代码' }
-    ]
+    ],
+    tokenPlan: {
+      keyPrefix: 'sk-sp-',
+      docsUrl: 'https://help.aliyun.com/zh/model-studio/coding-plan'
+    }
   },
   {
     id: 'glm', dot: 'glm', letter: '智',
@@ -75,7 +88,10 @@ export const PROVIDERS: LlmProvider[] = [
       { id: 'glm-4.7',        label: 'GLM-4.7',        contextWindow: 200_000,   maxOutput: 128_000, pricing: '¥4 / 16',    hint: '200K · 通用' },
       { id: 'glm-5.1',        label: 'GLM-5.1',        contextWindow: 200_000,   maxOutput: 128_000, pricing: '¥8 / 32',    hint: '200K · 最新旗舰' },
       { id: 'glm-4-long',     label: 'GLM-4 Long',     contextWindow: 1_000_000, maxOutput: 4_096,   pricing: '¥1 / 8',     hint: '1M · 长文本' }
-    ]
+    ],
+    tokenPlan: {
+      docsUrl: 'https://docs.bigmodel.cn/cn/guide/develop/http/introduction'
+    }
   },
   {
     id: 'kimi', dot: 'kimi', letter: 'K',
@@ -84,7 +100,10 @@ export const PROVIDERS: LlmProvider[] = [
     models: [
       { id: 'kimi-k2.6', label: 'Kimi K2.6', contextWindow: 262_144, maxOutput: 16_384, pricing: '¥6.5 / 27', hint: '262K · 主力', recommended: true },
       { id: 'kimi-k2.5', label: 'Kimi K2.5', contextWindow: 262_144, maxOutput: 16_384, pricing: '¥4 / 21',   hint: '262K · 经济' }
-    ]
+    ],
+    tokenPlan: {
+      docsUrl: 'https://platform.kimi.com/docs'
+    }
   },
   {
     id: 'doubao', dot: 'doubao', letter: '豆',
@@ -95,7 +114,10 @@ export const PROVIDERS: LlmProvider[] = [
       { id: 'doubao-seed-2-0-lite-260215', label: 'Doubao Seed 2.0 Lite', contextWindow: 256_000, maxOutput: 16_384, pricing: '¥0.6 / 3.6', hint: '256K · 经济' },
       { id: 'doubao-seed-2-0-mini-260215', label: 'Doubao Seed 2.0 Mini', contextWindow: 256_000, maxOutput: 16_384, pricing: '¥0.2 / 2.0', hint: '256K · 最低价' },
       { id: 'doubao-seed-1-6-260215',      label: 'Doubao Seed 1.6',      contextWindow: 256_000, maxOutput: 16_384, pricing: '¥0.8 / 8.0', hint: '256K · 上一代' }
-    ]
+    ],
+    tokenPlan: {
+      docsUrl: 'https://www.volcengine.com/docs/82379/1925114'
+    }
   },
   {
     id: 'hunyuan', dot: 'hunyuan', letter: '腾',
@@ -124,7 +146,11 @@ export const PROVIDERS: LlmProvider[] = [
       { id: 'mimo-v2.5-pro', label: 'MiMo V2.5 Pro',  contextWindow: 1_000_000, maxOutput: 128_000, pricing: '¥— / — (待校准)', hint: '1M · 文本主力', recommended: true },
       { id: 'mimo-v2.5',     label: 'MiMo V2.5 Omni', contextWindow: 1_000_000, maxOutput: 128_000, pricing: '¥— / — (待校准)', hint: '1M · 全模态' },
       { id: 'mimo-v2-flash', label: 'MiMo V2 Flash',  contextWindow: 256_000,   maxOutput: 64_000,  pricing: '¥— / — (待校准)', hint: '256K · 极速' }
-    ]
+    ],
+    tokenPlan: {
+      keyPrefix: 'tp-',
+      docsUrl: 'https://platform.xiaomimimo.com/docs/zh-CN/price/tokenplan/subscription'
+    }
   },
   {
     id: 'claude', dot: 'claude', letter: 'A',

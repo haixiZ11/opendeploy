@@ -153,11 +153,27 @@ export function App() {
       return;
     }
     const needsApiKey = provider !== 'ollama';
-    const hasApiKey = !needsApiKey || !!settings.apiKeys?.[provider];
+    // Plan/payg dual-bucket: respect the user's chosen mode when deciding
+    // whether onboarding is complete — otherwise a user who set up plan-only
+    // (`tp-xxxx` in planApiKeys, no `sk-xxxx` in apiKeys) would get re-trapped
+    // in the wizard on every launch.
+    const mode: 'payg' | 'plan' = settings.apiAccessMode?.[provider] ?? 'payg';
+    const hasApiKey =
+      !needsApiKey ||
+      !!(mode === 'plan'
+        ? settings.planApiKeys?.[provider]
+        : settings.apiKeys?.[provider]);
     if (!hasApiKey) {
       setPage('wizard');
     }
-  }, [loaded, settings.llmProvider, settings.apiKeys, wizardCompleted]);
+  }, [
+    loaded,
+    settings.llmProvider,
+    settings.apiKeys,
+    settings.planApiKeys,
+    settings.apiAccessMode,
+    wizardCompleted
+  ]);
 
   if (!loaded) {
     return (
