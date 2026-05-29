@@ -70,7 +70,7 @@
 
 **下载安装包(推荐)**
 
-[**👉 v0.2.3-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
+[**👉 v0.2.4-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
 
 **本地开发**
 
@@ -81,7 +81,7 @@ pnpm dev
 
 ## 当前状态
 
-**v0.2.3-alpha 已发布** —— 基于 v0.2.2-alpha 的小补丁。K/3「密码 N 天后到期」登录 advisory 现在按警告处理而非 fatal(此前密码临近过期就会导致整个产品打不开)。SysReport 工具在 LLM 传裸字符串而非 `[{localeId, value}]` LocaleValue 数组时给出快速失败 + 可执行提示。Plan 7.8 Phase 4.2 真 LLM 自驱 e2e (DeepSeek auto-driver) 已加入 —— 端到端覆盖 v0.2 alpha 验收场景。基于 v0.2.2-alpha 的 SysReport (账表) 配置工具构建 —— 程序等价 BOS Designer「过滤参数面板 → 添加参数」+「报表模板 → 列设置」, agent 用 `create_from_template` 建好账表后, 可端到端配置过滤参数 + 报表列, 无需切回用户手工。前序: v0.2.1-alpha (管理中心启用验证码时的连接修复 + 诊断日志) → v0.2.0-alpha (Plan 7 系列 BOS 覆盖面扩展)。面向 BOS 二开顾问的内部预览版, 功能 / API / UX 仍可能变动。
+**v0.2.4-alpha 已发布** —— 三处用户可见改动。(1) 小米 MiMo 作为第 10 家 LLM provider 加入 —— OpenAI 兼容, 3 个模型含 MiMo V2.5 Omni 全模态。(2) Wizard 引导流程现在选完 provider 后可以通过下拉框挑具体模型, 不再只能默认 recommended。(3) LLM 流式错误 (HTTP 402 余额不足 / 401 / 429 等) 现在以可见错误气泡显示在对话里 —— 此前 assistant 气泡一闪而过, 用户无法判断是否真的发出去过。另外: 全 9 家 provider 模型目录按 2026-05-29 当天官方价目/规格刷新 —— DeepSeek maxOutput 16K → 384K + v4-pro 永久 1/4 价; 豆包 seed-2.0 系列上调 2-3 倍 + 新增 mini 档; 混元 turbos-latest 上下文修正 224K → 32K; Kimi K2.6 上下文 256K → 262_144 + 重定价; Claude Opus 4.7 → 4.8; OpenAI 不存在的 `gpt-5.5-pro` 删除, 换成真实的 `gpt-5.4`; 新增 Qwen3.7-max 旗舰。基于 v0.2.3-alpha 的密码 advisory 容错 + LocaleValue fail-fast + Plan 7.8 SysReport 工具构建。前序: v0.2.3-alpha → v0.2.2-alpha (SysReport 工具) → v0.2.1-alpha (验证码连接修复) → v0.2.0-alpha (Plan 7 BOS 覆盖面)。面向 BOS 二开顾问的内部预览版, 功能 / API / UX 仍可能变动。
 
 - 目标: 金蝶云星空 V9 私有部署版(标准版 / 企业版,V8 暂不兼容 —— 登录协议差异)
 - 平台: 仅 Windows x64(macOS / Linux 视用户反馈)
