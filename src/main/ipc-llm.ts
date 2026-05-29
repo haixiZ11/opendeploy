@@ -179,6 +179,7 @@ export function registerLlmIpc(getMainWindow: () => BrowserWindow | null): void 
               type: 'usage',
               outputTokens: e.outputTokens
             });
+            else if (e.type === 'error') emit({ type: 'error', error: e.error });
           }
         });
 
