@@ -71,7 +71,7 @@ Requires Windows 10/11 + an LLM API key.
 
 **Download the installer (recommended)**
 
-[**👉 v0.2.4-alpha installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
+[**👉 v0.2.5-alpha installer**](https://github.com/qiaolei227/opendeploy/releases/latest) — grab `OpenDeploy-*-x64-setup.exe` and double-click to install.
 
 **Local development**
 
@@ -82,12 +82,12 @@ pnpm dev
 
 ## Status
 
-**v0.2.4-alpha released** — three user-visible changes. (1) Xiaomi MiMo joins as the 10th LLM provider — OpenAI-compatible, 3 models including MiMo V2.5 Omni 全模态. (2) Wizard onboarding now lets you pick a specific model per provider via dropdown, not just default to recommended. (3) LLM stream errors (HTTP 402 余额不足 / 401 / 429 etc.) now surface inline in chat as visible error bubbles — previously the assistant bubble flashed empty with no signal, leaving the user unable to tell whether anything was actually sent. Also: full model catalog refreshed across 9 providers against official pricing / spec pages dated 2026-05-29 — DeepSeek maxOutput 16K → 384K + v4-pro permanent 1/4 price; 豆包 seed-2.0 re-priced 2-3× upward + new mini tier; 混元 turbos-latest context corrected 224K → 32K; Kimi K2.6 context bumped 256K → 262_144 + repriced; Claude Opus 4.7 → 4.8; OpenAI's nonexistent `gpt-5.5-pro` removed and real `gpt-5.4` added; Qwen3.7-max added as new flagship. Builds on v0.2.3-alpha's password advisory tolerance + LocaleValue fail-fast + Plan 7.8 SysReport tools. Internal preview for BOS customization consultants; features / API / UX may still change.
+**v0.2.5-alpha released** — Token Plan / Coding Plan subscription support. For LLM providers that publish a dedicated 包月 endpoint, the Wizard now shows a [pay-as-you-go / token plan] toggle: pick the mode you've subscribed to and OpenDeploy swaps to the correct base URL + paste your plan API key. Two key buckets coexist in Settings so flipping the mode never requires re-pasting. **5 providers wired up against official documentation** — Xiaomi MiMo (`token-plan-cn.xiaomimimo.com` + `tp-` prefix), Aliyun Qwen / 百炼 (`coding.dashscope.aliyuncs.com` + `sk-sp-`), 智谱 GLM (`open.bigmodel.cn/api/coding`), Moonshot Kimi (`api.kimi.com/coding/v1`), 字节豆包 / 火山方舟 (`ark.cn-beijing.volces.com/api/coding/v3`). Plus a Settings 高级 drawer where you override the base URL outright for corporate proxies / third-party gateways. Existing pay-as-you-go users are completely unaffected — defaults are unchanged and the mode toggle stays hidden for providers without a plan endpoint (DeepSeek / GPT / Claude / 混元 / MiniMax / Ollama). Builds on v0.2.4-alpha's MiMo onboarding + per-model picker + stream-error surfacing. Internal preview for BOS customization consultants; features / API / UX may still change.
 
 - Target: Kingdee Cloud Cosmic V9 on-premise (Standard / Enterprise editions; V8 not supported — login protocol differs)
 - Platform: Windows x64 only (macOS / Linux pending user feedback)
 - 11 skills / 69 markdown files / 15,310 lines of industry knowledge
-- 910 unit / wire-replay tests, lint clean, real-server smoke + agent-loop e2e covered
+- 919 unit / wire-replay tests, lint clean, real-server smoke + agent-loop e2e covered
 
 ## License
 

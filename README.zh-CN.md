@@ -70,7 +70,7 @@
 
 **下载安装包(推荐)**
 
-[**👉 v0.2.4-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
+[**👉 v0.2.5-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
 
 **本地开发**
 
@@ -81,12 +81,12 @@ pnpm dev
 
 ## 当前状态
 
-**v0.2.4-alpha 已发布** —— 三处用户可见改动。(1) 小米 MiMo 作为第 10 家 LLM provider 加入 —— OpenAI 兼容, 3 个模型含 MiMo V2.5 Omni 全模态。(2) Wizard 引导流程现在选完 provider 后可以通过下拉框挑具体模型, 不再只能默认 recommended。(3) LLM 流式错误 (HTTP 402 余额不足 / 401 / 429 等) 现在以可见错误气泡显示在对话里 —— 此前 assistant 气泡一闪而过, 用户无法判断是否真的发出去过。另外: 全 9 家 provider 模型目录按 2026-05-29 当天官方价目/规格刷新 —— DeepSeek maxOutput 16K → 384K + v4-pro 永久 1/4 价; 豆包 seed-2.0 系列上调 2-3 倍 + 新增 mini 档; 混元 turbos-latest 上下文修正 224K → 32K; Kimi K2.6 上下文 256K → 262_144 + 重定价; Claude Opus 4.7 → 4.8; OpenAI 不存在的 `gpt-5.5-pro` 删除, 换成真实的 `gpt-5.4`; 新增 Qwen3.7-max 旗舰。基于 v0.2.3-alpha 的密码 advisory 容错 + LocaleValue fail-fast + Plan 7.8 SysReport 工具构建。前序: v0.2.3-alpha → v0.2.2-alpha (SysReport 工具) → v0.2.1-alpha (验证码连接修复) → v0.2.0-alpha (Plan 7 BOS 覆盖面)。面向 BOS 二开顾问的内部预览版, 功能 / API / UX 仍可能变动。
+**v0.2.5-alpha 已发布** —— Token Plan / Coding Plan 包月套餐支持。对发布了独立包月端点的 LLM 厂家,Wizard 现在出现 [按量计费 / 包月套餐] 切换:选你订过的模式,OpenDeploy 自动切到正确的 base URL,粘贴对应的套餐 API Key 即可。Settings 里两个 key bucket 并存,切 mode 不用重新粘贴。**5 家已按官方文档实证接入** —— 小米 MiMo (`token-plan-cn.xiaomimimo.com` + `tp-` 前缀)、阿里百炼 Qwen (`coding.dashscope.aliyuncs.com` + `sk-sp-`)、智谱 GLM (`open.bigmodel.cn/api/coding`)、Moonshot Kimi (`api.kimi.com/coding/v1`)、字节豆包 / 火山方舟 (`ark.cn-beijing.volces.com/api/coding/v3`)。另加 Settings「高级」抽屉,允许直接覆盖 base URL,给走企业代理 / 第三方网关的奇葩接入留逃生口。存量按量用户完全无感 —— 缺省行为不变,没声明 plan 端点的 provider (DeepSeek / GPT / Claude / 混元 / MiniMax / Ollama) 不出现切换控件。基于 v0.2.4-alpha 的 MiMo 接入 + 单模型选择器 + 流式错误可见构建。前序: v0.2.4-alpha (MiMo + model picker) → v0.2.3-alpha → v0.2.2-alpha → v0.2.1-alpha → v0.2.0-alpha。面向 BOS 二开顾问的内部预览版, 功能 / API / UX 仍可能变动。
 
 - 目标: 金蝶云星空 V9 私有部署版(标准版 / 企业版,V8 暂不兼容 —— 登录协议差异)
 - 平台: 仅 Windows x64(macOS / Linux 视用户反馈)
 - 11 个 skill / 69 份 markdown / 15310 行行业知识
-- 910 单元/wire-replay 测试,lint clean,真服务器 smoke + agent loop e2e 全覆盖
+- 919 单元/wire-replay 测试,lint clean,真服务器 smoke + agent loop e2e 全覆盖
 
 ## 开源协议
 
