@@ -70,7 +70,7 @@
 
 **下载安装包(推荐)**
 
-[**👉 v0.2.5-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
+[**👉 v0.2.6-alpha 安装包**](https://github.com/qiaolei227/opendeploy/releases/latest) —— 下载 `OpenDeploy-*-x64-setup.exe` 双击安装。
 
 **本地开发**
 
@@ -81,7 +81,7 @@ pnpm dev
 
 ## 当前状态
 
-**v0.2.5-alpha 已发布** —— Token Plan / Coding Plan 包月套餐支持。对发布了独立包月端点的 LLM 厂家,Wizard 现在出现 [按量计费 / 包月套餐] 切换:选你订过的模式,OpenDeploy 自动切到正确的 base URL,粘贴对应的套餐 API Key 即可。Settings 里两个 key bucket 并存,切 mode 不用重新粘贴。**5 家已按官方文档实证接入** —— 小米 MiMo (`token-plan-cn.xiaomimimo.com` + `tp-` 前缀)、阿里百炼 Qwen (`coding.dashscope.aliyuncs.com` + `sk-sp-`)、智谱 GLM (`open.bigmodel.cn/api/coding`)、Moonshot Kimi (`api.kimi.com/coding/v1`)、字节豆包 / 火山方舟 (`ark.cn-beijing.volces.com/api/coding/v3`)。另加 Settings「高级」抽屉,允许直接覆盖 base URL,给走企业代理 / 第三方网关的奇葩接入留逃生口。存量按量用户完全无感 —— 缺省行为不变,没声明 plan 端点的 provider (DeepSeek / GPT / Claude / 混元 / MiniMax / Ollama) 不出现切换控件。基于 v0.2.4-alpha 的 MiMo 接入 + 单模型选择器 + 流式错误可见构建。前序: v0.2.4-alpha (MiMo + model picker) → v0.2.3-alpha → v0.2.2-alpha → v0.2.1-alpha → v0.2.0-alpha。面向 BOS 二开顾问的内部预览版, 功能 / API / UX 仍可能变动。
+**v0.2.6-alpha 已发布** —— 连接可靠性修复(issue #7)。当 K/3 账号密码**硬过期**时,登录返回的提示之前被 OpenDeploy 误当成"连接成功",于是拿到一个**未认证的会话**,后续每个元数据 / 写入 RPC 都被服务端拒,报一句很费解的 `401 Forbidden ByRspRetStatusCode -- N001: Unexpectable request`(再被二次包装成更费解的 `K/3 RPC body is not valid JSON`)。结果项目显示**已连接**,但每个操作都静默失败。本次:(1) 把硬过期密码当作连接**失败**,给出明确的"请重置密码后再连接"提示,而不是连上一个死会话;(2) 识别这种服务端拒绝报文,报出真因——会话未完整认证 / 登录不完整——不再误报 JSON 解析错误;(3) 修好登录验证码流程:验证码图改从把码写进**登录所读的同一个服务端 session** 的 kdsvc 端点取(旧的 `ValidateCode.ashx` 用的是另一套 session,输对了码也对不上),并改用原生 WPF 客户端类型。相对 v0.2.5-alpha 无 ERP 覆盖面变化。前序: v0.2.5-alpha (Token Plan) → v0.2.4-alpha → v0.2.3-alpha → v0.2.2-alpha → v0.2.1-alpha → v0.2.0-alpha。面向 BOS 二开顾问的内部预览版, 功能 / API / UX 仍可能变动。
 
 - 目标: 金蝶云星空 V9 私有部署版(标准版 / 企业版,V8 暂不兼容 —— 登录协议差异)
 - 平台: 仅 Windows x64(macOS / Linux 视用户反馈)
