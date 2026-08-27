@@ -14,6 +14,7 @@ import {
   type ProjectSummary
 } from '@renderer/components/SecondarySide';
 import { StatusBar } from '@renderer/components/StatusBar';
+import { WindowControls } from '@renderer/components/WindowControls';
 import { WorkspacePage } from '@renderer/pages/WorkspacePage';
 import { SettingsPage } from '@renderer/pages/SettingsPage';
 import { SkillsPage } from '@renderer/pages/SkillsPage';
@@ -199,6 +200,13 @@ export function App() {
       <ThemeProvider>
         <div className={appClass}>
           {!isWizard && <TitleBar />}
+          {/* Wizard hides the titlebar entirely, but the frameless window still
+              needs min/max/close somewhere — pin the captions top-right. */}
+          {isWizard && (
+            <div className="wincontrols-float">
+              <WindowControls />
+            </div>
+          )}
           {!isWizard && <NavRail current={page} onChange={setPage} />}
           {!isWizard && (
             <SecondarySide
@@ -208,6 +216,7 @@ export function App() {
               onProjectSelect={(id) => {
                 void useProjectsStore.getState().setActive(id);
               }}
+              onManageProjects={() => setPage('projects')}
               conversations={conversations}
               activeConversationId={chatConversationId ?? undefined}
               onConversationSelect={(id) => {
