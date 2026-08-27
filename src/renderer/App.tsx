@@ -20,6 +20,7 @@ import { SettingsPage } from '@renderer/pages/SettingsPage';
 import { SkillsPage } from '@renderer/pages/SkillsPage';
 import { ProjectsPage } from '@renderer/pages/ProjectsPage';
 import { WizardPage } from '@renderer/pages/WizardPage';
+import { CaptchaModal } from '@renderer/components/CaptchaModal';
 
 /** Short relative time label: "刚刚" / "14:23" / "4月18日". Terminal-width safe. */
 function formatConvDate(iso: string, lang: string): string {
@@ -152,18 +153,28 @@ export function App() {
       setPage('wizard');
       return;
     }
-    if (provider === 'custom-openai') {
-      const custom = settings.customOpenAI;
-      const complete = !!custom?.apiKey?.trim() && !!custom?.baseUrl?.trim() && !!custom?.model?.trim();
-      if (!complete) setPage('settings');
-      return;
-    }
     const needsApiKey = provider !== 'ollama';
-    const hasApiKey = !needsApiKey || !!settings.apiKeys?.[provider];
+    // Plan/payg dual-bucket: respect the user's chosen mode when deciding
+    // whether onboarding is complete — otherwise a user who set up plan-only
+    // (`tp-xxxx` in planApiKeys, no `sk-xxxx` in apiKeys) would get re-trapped
+    // in the wizard on every launch.
+    const mode: 'payg' | 'plan' = settings.apiAccessMode?.[provider] ?? 'payg';
+    const hasApiKey =
+      !needsApiKey ||
+      !!(mode === 'plan'
+        ? settings.planApiKeys?.[provider]
+        : settings.apiKeys?.[provider]);
     if (!hasApiKey) {
       setPage('wizard');
     }
-  }, [loaded, settings.llmProvider, settings.apiKeys, settings.customOpenAI, wizardCompleted]);
+  }, [
+    loaded,
+    settings.llmProvider,
+    settings.apiKeys,
+    settings.planApiKeys,
+    settings.apiAccessMode,
+    wizardCompleted
+  ]);
 
   if (!loaded) {
     return (
@@ -252,9 +263,30 @@ export function App() {
           {!isWizard && (
             <StatusBar
               llmProviderId={settings.llmProvider}
-              appVersion="v0.1.0-alpha.1"
+              appVersion={`v${__APP_VERSION__}`}
             />
           )}
+
+          {(() => {
+            // Global CAPTCHA prompt — rendered above the active page so the
+            // user can activate a project from any surface (Workspace rail,
+            // Projects page, ...) and still get prompted without navigating.
+            const activeProject = projects.find(
+              (p) => p.id === projectsConnectionState.projectId,
+            );
+            return (
+              <CaptchaModal
+                open={projectsConnectionState.status === 'captcha-required'}
+                projectName={activeProject?.name}
+                baseUrl={activeProject?.bos?.baseUrl}
+                image={projectsConnectionState.captchaImage}
+                error={projectsConnectionState.error}
+                onSubmit={(code) => useProjectsStore.getState().submitCaptcha(code)}
+                onRefresh={() => useProjectsStore.getState().refreshCaptcha()}
+                onCancel={() => void useProjectsStore.getState().setActive(null)}
+              />
+            );
+          })()}
         </div>
       </ThemeProvider>
     </ErrorBoundary>

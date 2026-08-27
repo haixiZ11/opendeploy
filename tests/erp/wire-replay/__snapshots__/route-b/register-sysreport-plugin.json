@@ -1,0 +1,8 @@
+{
+  "endpoint": "SaveForIDEV9",
+  "ap0Plain": {
+    "__source__": "<FormMetadata><BusinessInfo><BusinessInfo><Elements><Form action=\"edit\" oid=\"BOS_SimpleSysReport\" ElementType=\"900\" ElementStyle=\"0\"><Id>kf1111111111111111111111111111111</Id><SysReportServicePlugins><PlugIn ElementType=\"0\" ElementStyle=\"0\"><ClassName>TestReportPlugin</ClassName><PlugInType>1</PlugInType><PyScript><![CDATA[import clr\npass]]></PyScript></PlugIn></SysReportServicePlugins></Form></Elements></BusinessInfo></BusinessInfo><LayoutInfos/></FormMetadata>",
+    "__paras__": "{\"ModelTypeId\":900,\"BaseObjectId\":\"BOS_SimpleSysReport\",\"DevType\":0,\"SubSystemId\":\"23\",\"UpdateIdToKey\":false,\"MainVersion\":\"\",\"Name\":\"[{\\\"Key\\\":2052,\\\"Value\\\":\\\"kf1111111111111111111111111111111\\\"}]\",\"FirstNonExtendObjectID\":\"BOS_SimpleSysReport\",\"ISV\":null,\"Version\":null,\"PackageId\":null,\"OldId\":\"kf1111111111111111111111111111111\",\"Id\":\"kf1111111111111111111111111111111\",\"HasExtends\":false,\"RunTime\":false,\"LayoutViewId\":null,\"OldLayoutViewId\":null,\"LayoutViewVersion\":null,\"DependencyObjectId\":null,\"SourceFormId\":null,\"InheritPath\":null,\"IsInheritElement\":false,\"ModelTypeSubId\":900}",
+    "2052": ""
+  }
+}

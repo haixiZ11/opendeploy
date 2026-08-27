@@ -331,6 +331,46 @@ describe('addToolbarButtonTool', () => {
     expect(call.barItemLinkId).toMatch(dashedRe);
   });
 
+  it("list / form modes accept omitted toolbarKey (fresh extension — no bootstrap needed)", async () => {
+    // v0.2 alpha validation friction: fresh extensions return listOperations
+    // with toolbarButtons=[], so the agent had nothing to borrow toolbarKey
+    // from and we used to ask the user to manually create a temp button in
+    // BOS Designer. But form/list modes never emit toolbarKey to the wire
+    // (rpc/dcxml.ts:660-662) — the requirement was vestigial.
+    const addToolbarButton = vi.fn(async () => ({ buttonKey: 'btnOpenStat' }));
+    const fake = makeConnectorWithOp(addToolbarButton);
+    const tool = addToolbarButtonTool(fake);
+
+    await tool.execute({
+      extensionFid: EXT_ID,
+      target: { kind: 'list' },
+      buttonKey: 'btnOpenStat',
+      caption: '跳转审批统计',
+      boundOperationKey: 'ApplyDiscount'
+      // intentionally no toolbarKey
+    });
+
+    expect(addToolbarButton).toHaveBeenCalledTimes(1);
+    const call = addToolbarButton.mock.calls[0][0];
+    expect(call.target).toEqual({ kind: 'list' });
+    // placeholder fallback: buttonKey itself
+    expect(call.toolbarKey).toBe('btnOpenStat');
+  });
+
+  it("entry mode still requires toolbarKey", async () => {
+    const tool = addToolbarButtonTool(makeConnectorWithOp());
+    await expect(
+      tool.execute({
+        extensionFid: EXT_ID,
+        target: { kind: 'entry', entityKey: 'FSaleOrderEntry' },
+        buttonKey: 'btnRowMark',
+        caption: '标记行',
+        boundOperationKey: 'ApplyDiscount'
+        // no toolbarKey
+      })
+    ).rejects.toThrow(/toolbarKey/);
+  });
+
   it('happy path entry-level: forwards target.entityKey through', async () => {
     const addToolbarButton = vi.fn(async () => ({ buttonKey: 'btnRowMark' }));
     const fake = makeConnectorWithOp(addToolbarButton);

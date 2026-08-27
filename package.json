@@ -1,6 +1,6 @@
 {
   "name": "opendeploy",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.6-alpha",
   "description": "Open-source AI delivery agent for Kingdee ERP implementation",
   "main": "./out/main/index.js",
   "productName": "OpenDeploy",

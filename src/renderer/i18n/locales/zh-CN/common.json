@@ -69,6 +69,25 @@
     "apiKeySection": "API Key",
     "apiKeyPlaceholder": "粘贴你的 API Key…",
     "ollamaNoKey": "Ollama 本地运行，无需 API Key。",
+    "accessMode": {
+      "label": "计费模式",
+      "payg": "按量计费",
+      "plan": "包月套餐",
+      "paygHint": "实际消耗的 token 按官方价计费,无月费。",
+      "planHint": "固定月费换 token 配额,适合高频使用。仅限支持 Token Plan 的厂家。",
+      "planDocsLink": "查看套餐 ↗"
+    },
+    "paygApiKeyPlaceholder": "按量 API Key (例 sk-xxxx)",
+    "planApiKey": "包月套餐 API Key",
+    "planApiKeyPlaceholder": "套餐 API Key (例 tp-xxxx)",
+    "planKeyMismatchHint": "套餐 Key 通常以 {{prefix}} 开头。该字符串看起来不匹配,可能粘错了。",
+    "advanced": {
+      "header": "高级",
+      "baseUrlLabel": "Base URL 覆盖",
+      "baseUrlPlaceholder": "留空走默认,填了无视计费模式直接打这个地址",
+      "baseUrlHint": "用于走企业代理 / 第三方网关 / 不规则厂家端点。优先级最高。",
+      "resetDefault": "恢复默认"
+    },
     "recommended": "推荐 · 国内直连",
     "model": "模型",
     "modelHint": "同一厂商下不同模型的上下文窗口、价格、能力可能差很多",
@@ -105,6 +124,8 @@
     "sectionLlm": "LLM 服务",
     "sectionAbout": "关于",
     "aboutVersion": "版本",
+    "aboutSupportedErp": "支持的 ERP",
+    "aboutSupportedErpValue": "金蝶云星空 V9.x (标准版 / 企业版)",
     "aboutLicense": "开源协议",
     "aboutSource": "源码",
     "aboutCopyright": "© 2026 乔磊",
@@ -132,6 +153,7 @@
     "feat3Title": "ERP 实施专用",
     "providerHeading": "选择一个 LLM provider",
     "providerDesc": "API Key 加密存储在本地钥匙串。任何时候都可以更换或增加 provider。",
+    "accessModeIntro": "该厂家同时提供包月套餐,可按需切换。",
     "doneHeading": "一切准备就绪",
     "doneDesc": "进入工作台后，在「项目」页点 + 新建项目：选 ERP 产品 → 填数据库连接 → 从账套下拉里选一个。",
     "skillLib": "技能库",
@@ -164,7 +186,7 @@
     "password": "密码",
     "product": "产品",
     "products": {
-      "k3cloud": "金蝶云星空 企业版/标准版"
+      "k3cloud": "金蝶云星空 V9 (标准版 / 企业版)"
     },
     "encrypt": "加密连接",
     "encryptHint": "SQL Server 2022+ 默认强制加密；除非连旧版否则保持开启",
@@ -214,7 +236,19 @@
       "idle": "未连接",
       "connecting": "连接中…",
       "connected": "已连接",
-      "error": "连接失败"
+      "error": "连接失败",
+      "captcha-required": "请输入验证码"
+    },
+    "errorPrefix": "失败原因",
+    "retry": "重试",
+    "captcha": {
+      "modalTitle": "输入登录验证码",
+      "intro": "服务器启用了登录验证码,请输入图中 4 位字符 (大小写无关)。",
+      "refresh": "换一张",
+      "refreshHint": "看不清?换一张",
+      "placeholder": "4 位字符",
+      "submit": "确定",
+      "submitting": "提交中…"
     }
   },
   "skills": {

@@ -14,6 +14,10 @@ interface ProjectsState {
   update: (id: string, patch: Partial<Omit<Project, 'id' | 'createdAt'>>) => Promise<Project>;
   remove: (id: string) => Promise<void>;
   setActive: (id: string | null) => Promise<void>;
+  /** Submit the CAPTCHA code; outcome flows back via connection-state event. */
+  submitCaptcha: (code: string) => Promise<void>;
+  /** Rotate the CAPTCHA image; image updates via connection-state event. */
+  refreshCaptcha: () => Promise<void>;
 
   /** Wire the live erp:connection-state listener. Idempotent — call once from App.tsx. */
   subscribeConnection: () => void;
@@ -65,6 +69,14 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
   setActive: async (id) => {
     await window.opendeploy.projectsSetActive(id);
     // connectionState will update via the subscription; no need to refetch here.
+  },
+
+  submitCaptcha: async (code) => {
+    await window.opendeploy.projectsSubmitCaptcha(code);
+  },
+
+  refreshCaptcha: async () => {
+    await window.opendeploy.projectsRefreshCaptcha();
   },
 
   subscribeConnection: () => {

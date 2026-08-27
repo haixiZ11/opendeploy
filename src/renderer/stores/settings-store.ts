@@ -10,6 +10,9 @@ interface SettingsState {
   setTheme: (theme: Theme) => Promise<void>;
   setLlmProvider: (provider: string) => Promise<void>;
   setApiKey: (provider: string, key: string) => Promise<void>;
+  setPlanApiKey: (provider: string, key: string) => Promise<void>;
+  setApiAccessMode: (provider: string, mode: 'payg' | 'plan') => Promise<void>;
+  setApiBaseUrlOverride: (provider: string, url: string) => Promise<void>;
   setModel: (provider: string, modelId: string) => Promise<void>;
   setOllamaModelInput: (value: string) => Promise<void>;
   setLlmRawDump: (on: boolean) => Promise<void>;
@@ -56,6 +59,36 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
     const apiKeys = { ...(current.apiKeys ?? {}), [provider]: key };
     const next = { ...current, apiKeys };
+    await window.opendeploy.saveSettings(next);
+    set({ settings: next });
+  },
+
+  setPlanApiKey: async (provider, key) => {
+    const current = get().settings;
+    const planApiKeys = { ...(current.planApiKeys ?? {}), [provider]: key };
+    const next = { ...current, planApiKeys };
+    await window.opendeploy.saveSettings(next);
+    set({ settings: next });
+  },
+
+  setApiAccessMode: async (provider, mode) => {
+    const current = get().settings;
+    const apiAccessMode = { ...(current.apiAccessMode ?? {}), [provider]: mode };
+    const next = { ...current, apiAccessMode };
+    await window.opendeploy.saveSettings(next);
+    set({ settings: next });
+  },
+
+  setApiBaseUrlOverride: async (provider, url) => {
+    const current = get().settings;
+    const trimmed = url.trim();
+    const apiBaseUrlOverride = { ...(current.apiBaseUrlOverride ?? {}) };
+    if (trimmed === '') {
+      delete apiBaseUrlOverride[provider];
+    } else {
+      apiBaseUrlOverride[provider] = trimmed;
+    }
+    const next = { ...current, apiBaseUrlOverride };
     await window.opendeploy.saveSettings(next);
     set({ settings: next });
   },

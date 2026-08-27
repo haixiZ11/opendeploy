@@ -20,9 +20,12 @@ export function Composer({ llmProviderId, presetText }: ComposerProps) {
   const wasStreamingRef = useRef(false);
 
   const effectiveProviderId = llmProviderId ?? settings.llmProvider ?? 'deepseek';
-  const apiKey = effectiveProviderId === 'custom-openai'
-    ? settings.customOpenAI?.apiKey
-    : settings.apiKeys?.[effectiveProviderId];
+  const accessMode: 'payg' | 'plan' =
+    settings.apiAccessMode?.[effectiveProviderId] ?? 'payg';
+  const apiKey =
+    accessMode === 'plan'
+      ? settings.planApiKeys?.[effectiveProviderId]
+      : settings.apiKeys?.[effectiveProviderId];
 
   // Auto-focus the textarea when streaming finishes (true → false transition).
   // Without this, the cursor stays parked wherever the user last clicked,
@@ -53,7 +56,7 @@ export function Composer({ llmProviderId, presetText }: ComposerProps) {
     if (!text.trim() || isStreaming) return;
     const msg = text;
     setText('');
-    await sendMessage(msg, effectiveProviderId, apiKey);
+    await sendMessage(msg, effectiveProviderId, apiKey, accessMode);
   };
 
   return (

@@ -1,0 +1,8 @@
+{
+  "endpoint": "SaveForIDEV9",
+  "ap0Plain": {
+    "__source__": "<FormMetadata><BusinessInfo><BusinessInfo><Elements><Form action=\"edit\" oid=\"BOS_BillWithEntryModel\" ElementType=\"100\" ElementStyle=\"0\"><Id>kf0000000000000000000000000000000</Id><SubsysId>23</SubsysId><Name>TESTC</Name></Form></Elements></BusinessInfo></BusinessInfo><LayoutInfos><LayoutInfo action=\"edit\" oid=\"00000000-0000-0000-0000-000000000001\"><Appearances><FormAppearance action=\"edit\" oid=\"00000000-0000-0000-0000-000000000002\" ElementType=\"100\" ElementStyle=\"1\"><Caption>TESTC</Caption></FormAppearance></Appearances></LayoutInfo></LayoutInfos></FormMetadata>",
+    "__paras__": "{\"ModelTypeId\":100,\"BaseObjectId\":\"BOS_BillWithEntryModel\",\"DevType\":0,\"SubSystemId\":\"23\",\"UpdateIdToKey\":false,\"MainVersion\":\"<live>\",\"Name\":\"[{\\\"Key\\\":2052,\\\"Value\\\":\\\"TESTC\\\"}]\",\"FirstNonExtendObjectID\":\"BOS_BillWithEntryModel\",\"ISV\":null,\"Version\":null,\"PackageId\":null,\"OldId\":null,\"Id\":\"kf0000000000000000000000000000000\",\"HasExtends\":false,\"RunTime\":false,\"LayoutViewId\":null,\"OldLayoutViewId\":null,\"LayoutViewVersion\":null,\"DependencyObjectId\":null,\"SourceFormId\":null,\"InheritPath\":null,\"IsInheritElement\":false,\"ModelTypeSubId\":100}",
+    "2052": ""
+  }
+}

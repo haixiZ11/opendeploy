@@ -54,7 +54,12 @@ interface ChatState {
   currentRequestId: string | null;
   conversationId: string | null;
 
-  sendMessage: (text: string, providerId: string, apiKey: string | undefined) => Promise<void>;
+  sendMessage: (
+    text: string,
+    providerId: string,
+    apiKey: string | undefined,
+    accessMode?: 'payg' | 'plan'
+  ) => Promise<void>;
   abort: () => Promise<void>;
   clear: () => void;
   loadConversation: (id: string) => Promise<void>;
@@ -92,7 +97,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentRequestId: null,
   conversationId: null,
 
-  sendMessage: async (text, providerId, apiKey) => {
+  sendMessage: async (text, providerId, apiKey, accessMode) => {
     const userMsg: ChatMessage = {
       id: makeChatId(), role: 'user', content: text, createdAt: new Date().toISOString()
     };
@@ -191,7 +196,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set({ messages: msgs, isStreaming: false, currentRequestId: null });
         unsubscribe();
       } else if (ev.type === 'error') {
-        set({ error: ev.error ?? 'Unknown error', isStreaming: false, currentRequestId: null });
+        const errText = ev.error ?? 'Unknown error';
+        const msgs = [...get().messages];
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === 'assistant') {
+          const flushed = flushPendingText(last);
+          msgs[msgs.length - 1] = {
+            ...flushed,
+            content: flushed.content ? `${flushed.content}\n\n[error] ${errText}` : `[error] ${errText}`,
+            isStreaming: false,
+            pendingTokens: undefined,
+            tokensExact: undefined
+          };
+        }
+        set({ messages: msgs, error: errText, isStreaming: false, currentRequestId: null });
         unsubscribe();
       }
     });
@@ -215,6 +233,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         providerId,
         apiKey,
         model: modelId,
+        accessMode,
         userMessage: text
       });
       set({ currentRequestId: requestId, conversationId: get().conversationId ?? requestId });

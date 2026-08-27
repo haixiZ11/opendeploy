@@ -17,7 +17,6 @@ const api: IpcApi = {
     ipcRenderer.on('win:maximized', listener);
     return () => ipcRenderer.removeListener('win:maximized', listener);
   },
-  llmListModels: (input) => ipcRenderer.invoke('llm:list-models', input),
   llmSendMessage: (req: LlmChatRequest) => ipcRenderer.invoke('llm:send', req),
   llmAbort: (requestId: string) => ipcRenderer.invoke('llm:abort', requestId),
   llmOnStream: (cb: (ev: LlmStreamEvent) => void) => {
@@ -53,6 +52,9 @@ const api: IpcApi = {
     ipcRenderer.on('erp:connection-state', listener);
     return () => ipcRenderer.removeListener('erp:connection-state', listener);
   },
+  projectsSubmitCaptcha: (code: string) =>
+    ipcRenderer.invoke('projects:submit-captcha', code),
+  projectsRefreshCaptcha: () => ipcRenderer.invoke('projects:refresh-captcha'),
 
   pluginsList: (projectId: string) => ipcRenderer.invoke('plugins:list', projectId),
   pluginsRead: (projectId: string, name: string) =>

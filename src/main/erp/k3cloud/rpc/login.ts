@@ -25,8 +25,10 @@
 import { KdSession, callKdsvc, encodeApField, encodeApFieldRaw, parseJsonResponse, applySetCookieToSession } from './http-client';
 import { buildClientInfo } from './clientinfo';
 import { cipherPasswordForLogin } from './password';
+import { createLogger } from '../../../logger';
 
 const USER_SERVICE = 'Kingdee.BOS.ServiceFacade.ServicesStub.User.UserService';
+const logger = createLogger('erp/k3cloud/login');
 
 export interface LoginCredentials {
   /** K/3 Cloud Web Server URL, e.g. "http://localhost/k3cloud". No trailing slash. */
@@ -74,6 +76,22 @@ export async function fetchPublicKeyInfo(session: KdSession, acctId: string): Pr
   return text;
 }
 
+export interface LoginOptions {
+  /**
+   * Reuse an existing KdSession instead of creating one. Required for the
+   * CAPTCHA flow: the ASP.NET_SessionId cookie established by the first
+   * login attempt must persist across `fetchCaptchaImage` and the second
+   * ValidateLoginInfo call (the server-side VerificationCode is bound to
+   * that session).
+   */
+  session?: KdSession;
+  /**
+   * Captcha 4-character code. Empty/null when the data center doesn't have
+   * CAPTCHA enabled. Compared case-insensitively server-side.
+   */
+  validationCode?: string;
+}
+
 /**
  * Full Login orchestration for local-account auth.
  *
@@ -81,10 +99,27 @@ export async function fetchPublicKeyInfo(session: KdSession, acctId: string): Pr
  * subsequent RPC calls (e.g. saveExtension). Cookie state is mutated on
  * `session` in-place.
  */
-export async function login(creds: LoginCredentials): Promise<LoginResult> {
-  const session: KdSession = { baseUrl: creds.baseUrl };
-  const obfuscatedKey = await fetchPublicKeyInfo(session, creds.acctId);
+export async function login(
+  creds: LoginCredentials,
+  opts?: LoginOptions,
+): Promise<LoginResult> {
+  const session: KdSession = opts?.session ?? { baseUrl: creds.baseUrl };
+  // CAPTCHA retry path: a 2nd `fetchPublicKeyInfo` on the same session has
+  // been observed to rotate ASP.NET_SessionId on some K/3 standard V9 builds,
+  // detaching the cookie from the Session["VerificationCode"] just written
+  // by ValidateCode.ashx → server then returns 002099000005373 "验证码不存在".
+  // Cache the (acctId-stable) key on the session so the 2nd call is silent.
+  let obfuscatedKey = session.obfuscatedKey;
+  if (obfuscatedKey === undefined) {
+    obfuscatedKey = await fetchPublicKeyInfo(session, creds.acctId);
+    session.obfuscatedKey = obfuscatedKey;
+  }
   const cookedPassword = cipherPasswordForLogin(creds.password, obfuscatedKey);
+  void logger.info(
+    `ValidateLoginInfo request | aspSess=${session.aspNetSessionId ? session.aspNetSessionId.slice(0, 8) + '…' : '(none)'} ` +
+      `kdSess=${session.kdServiceSessionId ? session.kdServiceSessionId.slice(0, 8) + '…' : '(none)'} ` +
+      `withValidationCode=${opts?.validationCode ? 'yes' : 'no'}`,
+  );
 
   const loginInfo = {
     AcctID: creds.acctId,
@@ -105,7 +140,6 @@ export async function login(creds: LoginCredentials): Promise<LoginResult> {
      *   — server tried to do AD/LDAP lookup. Switching to 1 (PwdAuthentication).
      */
     AuthenticateType: 1,
-    ValidationCode: null,
     EncyptType: 0,
     LoginType: 0,
     /**
@@ -138,6 +172,14 @@ export async function login(creds: LoginCredentials): Promise<LoginResult> {
     SMSCode: null,
     LoginIden: null,
     LoginAgain: null,
+    /**
+     * Server `UserService.CheckVaicationCode` compares this case-insensitively
+     * against `Session["VerificationCode"]` (written by `/mobile/ValidateCode.ashx`).
+     * Empty when CAPTCHA is disabled in 管理中心 → 系统参数; only the 2nd-attempt
+     * login (after fetching a fresh image) sets a value. See
+     * `.scratch/recon/captcha-login.md` for the full flow.
+     */
+    ValidationCode: opts?.validationCode ?? null,
   };
 
   // ValidateLoginInfo signature is `(string ServerUrl, LoginInfo info)` so
@@ -177,6 +219,17 @@ export async function login(creds: LoginCredentials): Promise<LoginResult> {
   }
   const accessToken = parsed.AccessToken ?? parsed.Context?.AccessToken;
   if (accessToken) session.accessToken = accessToken;
+
+  // Diagnostic: always record what the server returned so non-success paths
+  // (CAPTCHA, wrong password, account-set mismatch) are debuggable from
+  // app.log alone. Success cases are short — keep them too for completeness.
+  const msgSnippet = (parsed.Message ?? '').slice(0, 80);
+  void logger.info(
+    `ValidateLoginInfo result | loginResultType=${parsed.LoginResultType} ` +
+      `messageCode=${parsed.MessageCode ?? '(none)'} ` +
+      `message="${msgSnippet}" ` +
+      `withValidationCode=${opts?.validationCode ? 'yes' : 'no'}`,
+  );
 
   return {
     session,

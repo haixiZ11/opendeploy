@@ -14,6 +14,8 @@ describe('extractExistingExtensionElements', () => {
       tabControls: [],
       formOperations: [],
       headEntity: '',
+      keyWordList: '',
+      fieldList: '',
     });
   });
 
@@ -30,6 +32,8 @@ describe('extractExistingExtensionElements', () => {
       tabControls: [],
       formOperations: [],
       headEntity: '',
+      keyWordList: '',
+      fieldList: '',
     });
   });
 

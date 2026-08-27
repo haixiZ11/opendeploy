@@ -27,6 +27,22 @@ export interface AppSettings {
    * Ollama 走 ollamaModelInput 而不是这里 (因为 Ollama 是自由文本).
    */
   modelByProvider?: Record<string, string>;
+  /**
+   * 每个 provider 当前生效的接入模式 (`'payg'` 按量 / `'plan'` 包月套餐).
+   * 缺省视为 `'payg'`,完全向后兼容存量用户。只有 `PROVIDER_CONFIGS[id].tokenPlan`
+   * 存在的厂家 UI 才暴露切换控件,其余 provider 这个字段不读不写。
+   */
+  apiAccessMode?: Record<string, 'payg' | 'plan'>;
+  /**
+   * Token Plan / Coding Plan 专用 API Key (例如小米 `tp-xxxx`,与按量 `sk-xxxx` 独立)。
+   * 跟 `apiKeys` 平行存储,允许用户同时保留两套 key 方便切 mode 不重填。
+   */
+  planApiKeys?: Record<string, string>;
+  /**
+   * 高级:per-provider base URL 覆盖。非空时无视 `apiAccessMode` 直接打这个 URL,
+   * 用于走企业代理 / 第三方网关 / 不规则厂家接入端点。优先级最高。
+   */
+  apiBaseUrlOverride?: Record<string, string>;
   /** Ollama 自定义模型名 (用户在 Settings 输入框填的). 缺省走 PROVIDERS.find(ollama).modelInputDefault. */
   ollamaModelInput?: string;
   /** User-configured knowledge sources (github / gitee / local). Defaults to empty. */
@@ -61,6 +77,12 @@ export interface LlmChatRequest {
   apiKey?: string;
   /** Model id override. 缺省时 client 端用 PROVIDER_CONFIGS[providerId].defaultModel. */
   model?: string;
+  /**
+   * 'payg' (按量) / 'plan' (Token Plan 包月)。缺省 = 'payg',main 端按此切 baseUrl。
+   * 渲染端从 `settings.apiAccessMode[providerId]` 读出后随请求下传,避免 main 端
+   * 反查 settings 引入第二个真实来源。
+   */
+  accessMode?: 'payg' | 'plan';
   userMessage: string;
 }
 
@@ -104,11 +126,6 @@ export interface IpcApi {
   winIsMaximized: () => Promise<boolean>;
   /** Subscribe to maximize/unmaximize pushes; returns an unsubscribe fn. */
   winOnMaximized: (cb: (maximized: boolean) => void) => () => void;
-  llmListModels: (input: {
-    providerId: string;
-    apiKey?: string;
-    baseUrl?: string;
-  }) => Promise<{ models: string[] }>;
   llmSendMessage: (req: LlmChatRequest) => Promise<{ requestId: string }>;
   llmAbort: (requestId: string) => Promise<void>;
   llmOnStream: (cb: (ev: LlmStreamEvent) => void) => () => void;
@@ -166,6 +183,16 @@ export interface IpcApi {
   projectsConnectionState: () => Promise<ErpConnectionState>;
   /** Subscribe to live connection-state changes. Returns an unsubscribe fn. */
   erpOnConnectionState: (cb: (s: ErpConnectionState) => void) => () => void;
+  /**
+   * Submit the CAPTCHA code the user typed. Only valid while the connection
+   * state is `'captcha-required'`. Resolves whether the code was accepted or
+   * rejected — outcomes flow back through the `erp:connection-state` event
+   * (status transitions to `'connected'`, stays `'captcha-required'` with a
+   * new image on wrong/expired, or transitions to `'error'`).
+   */
+  projectsSubmitCaptcha: (code: string) => Promise<void>;
+  /** Rotate the CAPTCHA image. Only valid in `'captcha-required'` state. */
+  projectsRefreshCaptcha: () => Promise<void>;
 
   // ─── Plugin artifacts ──────────────────────────────────────────────
   pluginsList: (projectId: string) => Promise<PluginFile[]>;

@@ -44,6 +44,14 @@ import {
   SaveExtensionRequest,
   FIELD_ELEMENT_TYPE,
 } from './types';
+import {
+  BosRptKeyWordFieldElement,
+  KEYWORD_KIND_TO_WIRE,
+} from './sysreport-keyword-types';
+import {
+  BosRptFilterGridFieldElement,
+  GRIDFIELD_CELLTYPE_TO_ELEMENTTYPE,
+} from './sysreport-gridfield-types';
 
 export function xmlEscape(s: string): string {
   return s
@@ -688,6 +696,255 @@ function renderRemoveBarButton(out: XmlWriter, b: BosRemoveBarButton): void {
   out.push(`</${b.appearanceKind}>`);
 }
 
+/**
+ * Plan 7.8 — render one `<RptKeyWordField>` block as a child of
+ * `<SQLDataSource><SQLDataSource><KeyWordList>`. The 5 user-facing kinds
+ * (date / base_data / text / combo / decimal) collapse to single class +
+ * ValueType + embedded `<Field>` per KEYWORD_KIND_TO_WIRE.
+ *
+ * Wire shape verified against Phase 0 spike probes:
+ *   .scratch/captures/sysreport-filter-wire-probe/probe-{date,base_data,text,combo,decimal}.dcxml.txt
+ * Recon doc: docs/recon/2026-05-20-sysreport-filter-columns-wire.md §3.A-§3.E.
+ *
+ * Child order (RptKeyWordField direct children) — driven by BOS reflection
+ * property order, byte-stable:
+ *   <Id> · <DataSource/> · <FilterBDFieldName/> · <IsAllowInput>True</…> ·
+ *   <KeyWord> · <Name>{zh-CN}</…> · <ValueType>{N}</…> · <DefaultValue.../> ·
+ *   <AssistantID.../> · [IsMultiSelect when true] · <IsAllowNull>{bool}</…> ·
+ *   <DSeq> · <CustomerBindKey/> · <Field><{KindField}/></Field> ·
+ *   <FieldAppearance><FieldAppearance/></FieldAppearance>
+ *
+ * Notes (also see §4 F-SR-1..5):
+ *   - LocaleValue `<Name>` is single-locale plain text (zh-CN) per §1.10 #7.
+ *     Phase 0 probe used single locale and that's what we mirror. Multi-locale
+ *     `<Localvalue LCID="...">` is documented but not exercised here.
+ *   - `<IsAllowInput>True</IsAllowInput>` is hardcoded — every BOS-Designer-
+ *     authored sample we captured has it True, matching the runtime default
+ *     for filter input controls.
+ *   - `<IsMustInput>` / `<IsMultiSelect>` follow §1.10 #3 "default false bools
+ *     are silently dropped". Phase 1 emitter only ships when explicitly true.
+ *   - Embedded `<Field>` reuses the existing 5.12 field-emitter approach for
+ *     type-specific sub-elements (ConditionType / LookUpObjectID etc.) but
+ *     does NOT call renderFieldElement directly: filter-Field shape is a
+ *     subset (no PropertyName, no MustInput, no ListTabIndex, no DefValue)
+ *     and reusing renderFieldElement would force schema-coupling that breaks
+ *     when filter and bill-field shapes diverge. Inline write here keeps the
+ *     wire byte-stable against §3 captures.
+ */
+function renderAddKeyWordField(out: XmlWriter, k: BosRptKeyWordFieldElement): void {
+  const wire = KEYWORD_KIND_TO_WIRE[k.kind];
+  const id = newDashedGuid();
+  const zhCn = k.name.find((n) => n.localeId === 2052)?.value ?? k.name[0]?.value ?? '';
+  const fieldName = k.keyWord.startsWith('@')
+    ? 'F' + k.keyWord.slice(1)
+    : 'F' + k.keyWord;
+  // DataSource — base_data 类型上的 RptKeyWordField.AssistantID 是引用基础资料
+  // FormId(spike §3.B `BD_Customer`). combo 类型的 enumTypeId 也走 AssistantID
+  // (spike note §3.D + sysreport-keyword-types.ts line 61). 其他类型留空。
+  const assistantId =
+    k.kind === 'base_data' ? k.refObjectId : k.kind === 'combo' ? k.enumTypeId : '';
+
+  out.push('<RptKeyWordField>');
+  out.push(`<Id>${id}</Id>`);
+  out.push('<DataSource />');
+  out.push('<FilterBDFieldName />');
+  out.push('<IsAllowInput>True</IsAllowInput>');
+  child(out, 'KeyWord', k.keyWord);
+  child(out, 'Name', zhCn);
+  child(out, 'ValueType', wire.valueType);
+  out.push('<DefaultValue />');
+  // AssistantID — non-empty only for base_data + combo per §3.B/§3.D.
+  if (assistantId) {
+    child(out, 'AssistantID', assistantId);
+  } else {
+    out.push('<AssistantID />');
+  }
+  // IsMultiSelect — base_data only, default false dropped per §1.10 #3.
+  if (k.kind === 'base_data' && k.multiSelect) {
+    out.push('<IsMultiSelect>True</IsMultiSelect>');
+  }
+  // IsAllowNull — default behavior matches probe (allowNull undefined → True),
+  // user setting false → dropped (default false in serializer view). Phase 0
+  // probe set true so the spike samples all show True.
+  if (k.allowNull !== false) {
+    out.push('<IsAllowNull>True</IsAllowNull>');
+  }
+  child(out, 'DSeq', k.seq);
+  out.push('<CustomerBindKey />');
+
+  // <Field><{KindField} ElementType="N" ElementStyle="0">...</> two-layer wrap
+  // per §1.10 #4 ComplexProperty rule. ElementType numeric matches §2 table.
+  const fieldClassName =
+    k.kind === 'date'
+      ? 'DateField'
+      : k.kind === 'base_data'
+        ? 'BaseDataField'
+        : k.kind === 'text'
+          ? 'TextField'
+          : k.kind === 'combo'
+            ? 'ComboField'
+            : 'DecimalField';
+  const fieldId = newCompactGuid();
+  out.push('<Field>');
+  out.push(`<${fieldClassName} ElementType="${wire.fieldElementType}" ElementStyle="0">`);
+  // Type-specific sub-elements per §3.A-§3.E. ConditionType placement is
+  // first within the field; Combo has no ConditionType (§3.D + §2 table note).
+  switch (k.kind) {
+    case 'date':
+      out.push('<ConditionType>2</ConditionType>');
+      break;
+    case 'base_data':
+      out.push('<ConditionType>0</ConditionType>');
+      child(out, 'LookUpObjectID', k.refObjectId);
+      break;
+    case 'text':
+      out.push('<ConditionType>0</ConditionType>');
+      // Editlen — TextField's [SimpleProperty] with [DefaultValue(50)].
+      // Decompile-verified (.scratch/decompile/field-properties/Kingdee.BOS.Core.Metadata.FieldElement/TextField.cs:24).
+      // Probe initially used the wrong name "MaxLength" — corrected here.
+      if (k.maxLength !== undefined && k.maxLength !== 50) {
+        child(out, 'Editlen', k.maxLength);
+      }
+      break;
+    case 'combo':
+      // Combo intentionally has NO <ConditionType> per §3.D and §2 note.
+      // Combo's enumTypeId rides on RptKeyWordField.AssistantID (above).
+      break;
+    case 'decimal':
+      out.push('<ConditionType>1</ConditionType>');
+      // FieldPrecision / FieldScale — DecimalField's [SimpleProperty] pair,
+      // no default value annotation (decompile-verified
+      // .scratch/decompile/field-properties/Kingdee.BOS.Core.Metadata.FieldElement/DecimalField.cs:540-544).
+      // Probe initially used "Precision" / "Scale" — corrected here.
+      if (k.precision !== undefined) child(out, 'FieldPrecision', k.precision);
+      if (k.scale !== undefined) child(out, 'FieldScale', k.scale);
+      break;
+  }
+  child(out, 'FieldName', fieldName);
+  child(out, 'Name', zhCn);
+  out.push(`<Id>${fieldId}</Id>`);
+  child(out, 'Key', fieldName);
+  out.push(`</${fieldClassName}>`);
+  out.push('</Field>');
+
+  // FieldAppearance — empty defaults per §3.A-E probe output (Key empty,
+  // ListDefaultWidth=100, Width empty, auto-GUID Id). Same two-layer wrap.
+  const apprId = newCompactGuid();
+  out.push('<FieldAppearance>');
+  out.push('<FieldAppearance>');
+  out.push('<Key />');
+  out.push('<ListDefaultWidth>100</ListDefaultWidth>');
+  out.push('<Width />');
+  out.push(`<Id>${apprId}</Id>`);
+  out.push('</FieldAppearance>');
+  out.push('</FieldAppearance>');
+
+  out.push('</RptKeyWordField>');
+}
+
+/**
+ * Plan 7.8 Phase 2 — render one `<RptFilterGridField>` block as a child of
+ * `<SQLDataSource><SQLDataSource><FieldList>`. The 5 user-facing cellTypes
+ * (text / integer / decimal / date / base_data_lookup) collapse to single
+ * class + embedded `<Field>` per GRIDFIELD_CELLTYPE_TO_ELEMENTTYPE.
+ *
+ * Wire shape verified against Phase 0 spike probe:
+ *   .scratch/captures/sysreport-filter-wire-probe/probe-gridfields.dcxml.txt §3.F
+ *
+ * Child order (RptFilterGridField direct children) — driven by BOS reflection
+ * property order, byte-stable per probe (text+text+integer+decimal sample):
+ *   <Id> · <Visible>True</…> · <Seq> · <Field><{KindField}/></Field> ·
+ *   <FieldAppearance><FieldAppearance/></FieldAppearance> · <DefaultColWidth>
+ *
+ * Notes:
+ *   - <Visible>True</Visible> is emitted UNCONDITIONALLY when visible is undefined
+ *     or true. Probe consistently shows `<Visible>True</Visible>` even for
+ *     default-true — Phase 0 spike §3.F. Setting visible=false emits "False".
+ *   - <DefaultColWidth> comes LAST (after FieldAppearance), per probe byte
+ *     order — distinct from KeyWordField shape.
+ *   - Embedded `<Field>` shape: <ConditionType> first (except not for combo —
+ *     combo isn't a valid gridfield cellType anyway), then type-specific
+ *     sub-elements, then FieldName / Name / Id / Key.
+ *   - text=ConditionType 0, integer=1, decimal=1 (all probe-verified).
+ *     date / base_data_lookup not in probe — use 0 (display semantic, not
+ *     range filter — distinct from KeyWordField where date=2).
+ */
+function renderAddFilterGridField(out: XmlWriter, gf: BosRptFilterGridFieldElement): void {
+  const fieldElementType = GRIDFIELD_CELLTYPE_TO_ELEMENTTYPE[gf.cellType];
+  const id = newDashedGuid();
+  const zhCn = gf.caption.find((c) => c.localeId === 2052)?.value ?? gf.caption[0]?.value ?? '';
+  const fieldId = newCompactGuid();
+  const fieldClassName =
+    gf.cellType === 'text'
+      ? 'TextField'
+      : gf.cellType === 'integer'
+        ? 'IntegerField'
+        : gf.cellType === 'decimal'
+          ? 'DecimalField'
+          : gf.cellType === 'date'
+            ? 'DateField'
+            : 'BaseDataField';
+
+  out.push('<RptFilterGridField>');
+  out.push(`<Id>${id}</Id>`);
+  // Probe consistently emits <Visible>True</Visible>; only suppress to False
+  // when caller explicitly sets visible=false.
+  out.push(`<Visible>${gf.visible === false ? 'False' : 'True'}</Visible>`);
+  child(out, 'Seq', gf.seq);
+
+  // Embedded <Field><{Kind}Field>...</{Kind}Field></Field>. ConditionType first,
+  // then type-specific, then FieldName / Name / Id / Key — per probe.
+  const conditionType =
+    gf.cellType === 'integer' || gf.cellType === 'decimal' ? 1 : 0;
+  out.push('<Field>');
+  out.push(`<${fieldClassName} ElementType="${fieldElementType}" ElementStyle="0">`);
+  child(out, 'ConditionType', conditionType);
+  switch (gf.cellType) {
+    case 'text':
+      if (gf.maxLength !== undefined && gf.maxLength !== 50) {
+        child(out, 'Editlen', gf.maxLength);
+      }
+      break;
+    case 'integer':
+      // IntegerField — no extra sub-elements (probe shows ConditionType/
+      // FieldName/Name/Id/Key only).
+      break;
+    case 'decimal':
+      if (gf.precision !== undefined) child(out, 'FieldPrecision', gf.precision);
+      if (gf.scale !== undefined) child(out, 'FieldScale', gf.scale);
+      break;
+    case 'date':
+      break;
+    case 'base_data_lookup':
+      child(out, 'LookUpObjectID', gf.refObjectId);
+      break;
+  }
+  child(out, 'FieldName', gf.fieldKey);
+  child(out, 'Name', zhCn);
+  out.push(`<Id>${fieldId}</Id>`);
+  child(out, 'Key', gf.fieldKey);
+  out.push(`</${fieldClassName}>`);
+  out.push('</Field>');
+
+  // FieldAppearance — empty defaults per probe (Key empty, ListDefaultWidth=100,
+  // Width empty, auto-GUID Id). Same two-layer wrap as KeyWordField.
+  const apprId = newCompactGuid();
+  out.push('<FieldAppearance>');
+  out.push('<FieldAppearance>');
+  out.push('<Key />');
+  out.push('<ListDefaultWidth>100</ListDefaultWidth>');
+  out.push('<Width />');
+  out.push(`<Id>${apprId}</Id>`);
+  out.push('</FieldAppearance>');
+  out.push('</FieldAppearance>');
+
+  // DefaultColWidth comes LAST per probe byte order — distinct from KeyWord
+  // shape where there's no DefaultColWidth at all.
+  if (gf.width !== undefined) child(out, 'DefaultColWidth', gf.width);
+
+  out.push('</RptFilterGridField>');
+}
+
 /** Render a self-built TabControlAppearance. ElementType=1005. */
 function renderTabControlAppearance(out: XmlWriter, a: BosTabControlAppearance): void {
   const id = a.id ?? newCompactGuid();
@@ -722,48 +979,138 @@ export function buildDcxmlSource(req: SaveExtensionRequest): string {
   const parts: string[] = [];
   const out: XmlWriter = { push: (s) => parts.push(s) };
 
+  // Plan 7.8 Phase 4 hotfix — SysReport 模式分流。SysReport 扩展(ModelTypeId
+  // = 900,如 BOS_SimpleSysReport 模板继承)wire root **必须**是
+  // `<SysReportForm action="edit" oid="${baseObjectId}" ElementType="900">`,
+  // 不能套 BillForm 的 `<Form oid="BOS_BillModel">` 外壳 — BOS DcxmlSerializer
+  // 按 root element tag 派发 metadata 类型,套错 wrapper 服务端 silent-drop
+  // 整段 SysReportForm 内容(实证 .scratch/captures/sysreport-template--
+  // kf9157e0.xml = 用户 BOS Designer 改 Caption 后的存储形态)。
+  //
+  // 判定条件 — 显式 modelTypeId=900 **或** 携带 SysReport-only 字段
+  // (wire-replay fixtures 用 BASELINE_EXT modelTypeId=100,所以光靠
+  // modelTypeId 不够;实际 connector 调用走 900 路径)。
+  const hasKeyWordChanges =
+    (req.addKeyWordFields && req.addKeyWordFields.length > 0) ||
+    !!req.existingKeyWordListRaw;
+  const hasFieldListChanges =
+    (req.addFilterGridFields && req.addFilterGridFields.length > 0) ||
+    !!req.existingFieldListRaw;
+  const isSysReportMode =
+    req.extension.modelTypeId === 900 || hasKeyWordChanges || hasFieldListChanges;
+
   out.push(`<?xml version="1.0" encoding="utf-16"?>`);
   out.push(`<FormMetadata>`);
   out.push(`<BusinessInfo><BusinessInfo><Elements>`);
-  const zhName = req.extension.name.find((n) => n.localeId === 2052)?.value;
-  renderFormRoot(
-    out,
-    req.extension.formId,
-    zhName,
-    req.addPlugins,
-    req.existingPluginsRaw,
-    req.addFormOperations,
-    req.existingFormOperationsRaw,
-    req.addListPlugins,
-    req.existingListPluginsRaw,
-  );
-  for (const raw of req.existingFieldsRaw ?? []) out.push(raw);
-  for (const f of req.addFields ?? []) renderFieldElement(out, f);
-  for (const raw of req.existingEntriesRaw ?? []) out.push(raw);
-  for (const e of req.addEntries ?? []) renderEntryEntity(out, e);
-  for (const r of req.removeFields ?? []) renderRemoveElement(out, r);
-  // Re-emit any prior HeadEntity overlay (extension-side EntityServiceRules)
-  // so envelope-rebuild round-trips don't silently drop them. See
-  // SaveExtensionRequest.existingHeadEntityRaw doc.
-  if (req.existingHeadEntityRaw) out.push(req.existingHeadEntityRaw);
+
+  if (isSysReportMode) {
+    // SysReport root envelope. `oid` = parent template id (baseObjectId);
+    // inner `<Id>` = this extension's formId. Same parent/child split as
+    // BillForm's <Form action="edit" oid="BOS_BillModel"><Id>{formId}</Id>.
+    out.push(
+      `<SysReportForm action="edit" oid="${xmlEscape(req.extension.baseObjectId)}" ElementType="900" ElementStyle="0">`,
+    );
+    out.push(`<Id>${req.extension.formId}</Id>`);
+    if (hasKeyWordChanges || hasFieldListChanges) {
+      const sqlOid = req.sqlDataSourceOid ?? '';
+      if (sqlOid) {
+        out.push(`<SQLDataSource action="edit" oid="${xmlEscape(sqlOid)}">`);
+      } else {
+        out.push(`<SQLDataSource action="edit">`);
+      }
+      out.push(`<SQLDataSource>`);
+      // Property-declared order in BOS SQLDataSource: FieldList **before**
+      // KeyWordList (spike doc §1.2). BOS reflection serializer emits in
+      // property declaration order and is order-sensitive on deserialize.
+      if (hasFieldListChanges) {
+        out.push(`<FieldList>`);
+        if (req.existingFieldListRaw) out.push(req.existingFieldListRaw);
+        for (const gf of req.addFilterGridFields ?? []) renderAddFilterGridField(out, gf);
+        out.push(`</FieldList>`);
+      }
+      if (hasKeyWordChanges) {
+        out.push(`<KeyWordList>`);
+        if (req.existingKeyWordListRaw) out.push(req.existingKeyWordListRaw);
+        for (const k of req.addKeyWordFields ?? []) renderAddKeyWordField(out, k);
+        out.push(`</KeyWordList>`);
+      }
+      out.push(`</SQLDataSource>`);
+      out.push(`</SQLDataSource>`);
+    }
+    out.push(`</SysReportForm>`);
+  } else {
+    // BillForm / BaseDataForm / DynamicForm — original Plan 5.12 / 7.6 / 7.7 path.
+    const zhName = req.extension.name.find((n) => n.localeId === 2052)?.value;
+    renderFormRoot(
+      out,
+      req.extension.formId,
+      zhName,
+      req.addPlugins,
+      req.existingPluginsRaw,
+      req.addFormOperations,
+      req.existingFormOperationsRaw,
+      req.addListPlugins,
+      req.existingListPluginsRaw,
+    );
+    for (const raw of req.existingFieldsRaw ?? []) out.push(raw);
+    for (const f of req.addFields ?? []) renderFieldElement(out, f);
+    for (const raw of req.existingEntriesRaw ?? []) out.push(raw);
+    for (const e of req.addEntries ?? []) renderEntryEntity(out, e);
+    for (const r of req.removeFields ?? []) renderRemoveElement(out, r);
+    // Re-emit any prior HeadEntity overlay (extension-side EntityServiceRules)
+    // so envelope-rebuild round-trips don't silently drop them. See
+    // SaveExtensionRequest.existingHeadEntityRaw doc.
+    if (req.existingHeadEntityRaw) out.push(req.existingHeadEntityRaw);
+  }
+
   out.push(`</Elements></BusinessInfo></BusinessInfo>`);
-  out.push(`<LayoutInfos><LayoutInfo action="edit" oid="${xmlEscape(req.layoutInfoOid)}">`);
-  out.push(`<Appearances>`);
-  for (const raw of req.existingAppearancesRaw ?? []) out.push(raw);
-  for (const a of req.addAppearances ?? []) renderAppearance(out, a);
-  for (const raw of req.existingTabControlsRaw ?? []) out.push(raw);
-  for (const a of req.addTabControls ?? []) renderTabControlAppearance(out, a);
-  for (const raw of req.existingTabPagesRaw ?? []) out.push(raw);
-  for (const a of req.addTabPages ?? []) renderTabPageAppearance(out, a);
-  for (const raw of req.existingEntryAppearancesRaw ?? []) out.push(raw);
-  for (const a of req.addEntryAppearances ?? []) renderEntryEntityAppearance(out, a);
-  // BarButton overlays: each emits a `<FormAppearance|EntryEntityAppearance
-  // action="edit" oid=...>` block siblings to existingAppearancesRaw. Server
-  // applies as a baseline-diff edit on the named parent appearance.
-  for (const b of req.addBarButtons ?? []) renderAddBarButton(out, b);
-  for (const b of req.removeBarButtons ?? []) renderRemoveBarButton(out, b);
-  out.push(`</Appearances>`);
-  out.push(`</LayoutInfo></LayoutInfos>`);
+
+  // LayoutInfos emission:
+  // - Non-SysReport mode: always emit (current Plan 5.12+ shape — even an
+  //   empty <Appearances/> is round-tripped).
+  // - SysReport mode: only emit when (a) layoutInfoOid is non-empty AND
+  //   (b) there's at least one layout-side change. Matches user sample
+  //   .scratch/captures/sysreport-template--kf9157e0.xml which **omits**
+  //   <LayoutInfos> entirely on baseline-no-layout-edits saves. SysReport
+  //   parents may not carry a layoutInfoOid at all until the first layout
+  //   edit creates one — so demanding it would brick Phase 1/2 tools that
+  //   only touch SQLDataSource.
+  const hasAppearanceChanges =
+    (req.addAppearances && req.addAppearances.length > 0) ||
+    (req.existingAppearancesRaw && req.existingAppearancesRaw.length > 0) ||
+    (req.addTabControls && req.addTabControls.length > 0) ||
+    (req.existingTabControlsRaw && req.existingTabControlsRaw.length > 0) ||
+    (req.addTabPages && req.addTabPages.length > 0) ||
+    (req.existingTabPagesRaw && req.existingTabPagesRaw.length > 0) ||
+    (req.addEntryAppearances && req.addEntryAppearances.length > 0) ||
+    (req.existingEntryAppearancesRaw && req.existingEntryAppearancesRaw.length > 0) ||
+    (req.addBarButtons && req.addBarButtons.length > 0) ||
+    (req.removeBarButtons && req.removeBarButtons.length > 0);
+
+  const emitLayout = isSysReportMode
+    ? !!req.layoutInfoOid && hasAppearanceChanges
+    : true;
+
+  if (emitLayout) {
+    out.push(`<LayoutInfos><LayoutInfo action="edit" oid="${xmlEscape(req.layoutInfoOid)}">`);
+    out.push(`<Appearances>`);
+    for (const raw of req.existingAppearancesRaw ?? []) out.push(raw);
+    for (const a of req.addAppearances ?? []) renderAppearance(out, a);
+    for (const raw of req.existingTabControlsRaw ?? []) out.push(raw);
+    for (const a of req.addTabControls ?? []) renderTabControlAppearance(out, a);
+    for (const raw of req.existingTabPagesRaw ?? []) out.push(raw);
+    for (const a of req.addTabPages ?? []) renderTabPageAppearance(out, a);
+    for (const raw of req.existingEntryAppearancesRaw ?? []) out.push(raw);
+    for (const a of req.addEntryAppearances ?? []) renderEntryEntityAppearance(out, a);
+    // BarButton overlays: each emits a `<FormAppearance|EntryEntityAppearance
+    // action="edit" oid=...>` block siblings to existingAppearancesRaw. Server
+    // applies as a baseline-diff edit on the named parent appearance.
+    for (const b of req.addBarButtons ?? []) renderAddBarButton(out, b);
+    for (const b of req.removeBarButtons ?? []) renderRemoveBarButton(out, b);
+    out.push(`</Appearances>`);
+    out.push(`</LayoutInfo></LayoutInfos>`);
+  }
+
   out.push(`</FormMetadata>`);
 
   return parts.join('');

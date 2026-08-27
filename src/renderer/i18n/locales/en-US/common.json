@@ -69,6 +69,25 @@
     "apiKeySection": "API Key",
     "apiKeyPlaceholder": "Paste your API key…",
     "ollamaNoKey": "Ollama runs locally — no API key needed.",
+    "accessMode": {
+      "label": "Billing mode",
+      "payg": "Pay-as-you-go",
+      "plan": "Token plan",
+      "paygHint": "Pay per token actually consumed — no monthly fee.",
+      "planHint": "Flat monthly fee for a token quota. Only available for providers that publish a plan endpoint.",
+      "planDocsLink": "View plan ↗"
+    },
+    "paygApiKeyPlaceholder": "Pay-as-you-go API key (e.g. sk-xxxx)",
+    "planApiKey": "Token-plan API key",
+    "planApiKeyPlaceholder": "Plan API key (e.g. tp-xxxx)",
+    "planKeyMismatchHint": "Plan keys usually start with {{prefix}}. This string doesn't look like one — likely pasted from the wrong bucket.",
+    "advanced": {
+      "header": "Advanced",
+      "baseUrlLabel": "Base URL override",
+      "baseUrlPlaceholder": "Leave empty for default; overrides billing-mode endpoint when set",
+      "baseUrlHint": "For corporate proxies, third-party gateways or non-standard provider endpoints. Highest priority.",
+      "resetDefault": "Reset to default"
+    },
     "recommended": "recommended",
     "model": "Model",
     "modelHint": "Different models from the same provider may differ widely in context, price, and capability",
@@ -105,6 +124,8 @@
     "sectionLlm": "LLM Provider",
     "sectionAbout": "About",
     "aboutVersion": "Version",
+    "aboutSupportedErp": "Supported ERP",
+    "aboutSupportedErpValue": "Kingdee K/3 Cloud V9.x (Standard / Enterprise)",
     "aboutLicense": "License",
     "aboutSource": "Source",
     "aboutCopyright": "© 2026 qiaolei",
@@ -132,6 +153,7 @@
     "feat3Title": "ERP-native",
     "providerHeading": "Pick an LLM provider",
     "providerDesc": "Key stored in OS keychain. Switch or add more anytime.",
+    "accessModeIntro": "This provider also offers a token plan — switch any time.",
     "doneHeading": "All set",
     "doneDesc": "After entering, go to Projects and click + New project: pick the ERP, enter DB credentials, then choose an accounting database from the dropdown.",
     "skillLib": "Skill library",
@@ -164,7 +186,7 @@
     "password": "Password",
     "product": "Product",
     "products": {
-      "k3cloud": "Kingdee K/3 Cloud (Standard / Enterprise)"
+      "k3cloud": "Kingdee K/3 Cloud V9 (Standard / Enterprise)"
     },
     "encrypt": "Encrypt",
     "encryptHint": "SQL Server 2022+ requires TLS; keep on unless talking to older servers",
@@ -214,7 +236,19 @@
       "idle": "Idle",
       "connecting": "Connecting…",
       "connected": "Connected",
-      "error": "Error"
+      "error": "Error",
+      "captcha-required": "CAPTCHA required"
+    },
+    "errorPrefix": "Reason",
+    "retry": "Retry",
+    "captcha": {
+      "modalTitle": "Enter login CAPTCHA",
+      "intro": "The server requires a login CAPTCHA. Type the 4 characters from the image (case-insensitive).",
+      "refresh": "New image",
+      "refreshHint": "Can't read it? Get a new one",
+      "placeholder": "4 chars",
+      "submit": "Submit",
+      "submitting": "Submitting…"
     }
   },
   "skills": {

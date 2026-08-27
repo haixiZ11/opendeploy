@@ -80,7 +80,7 @@ describe('buildK3CloudTools', () => {
     expect(bad.map((t) => t.definition.name)).toEqual([]);
   });
 
-  it('returns 31 tools when a connector is present', () => {
+  it('returns 35 tools when a connector is present', () => {
     const tools = buildK3CloudTools(makeFake());
     expect(tools.map((t) => t.definition.name).sort()).toEqual([
       'k3cloud_add_calculate_rule',
@@ -89,8 +89,11 @@ describe('buildK3CloudTools', () => {
       'k3cloud_add_convert_plugin',
       'k3cloud_add_custom_operation',
       'k3cloud_add_get_inv_stock_rule',
+      'k3cloud_add_sysreport_columns',
+      'k3cloud_add_sysreport_filter_parameters',
       'k3cloud_add_toolbar_button',
       'k3cloud_create_convert_rule_extension',
+      'k3cloud_create_from_template',
       'k3cloud_delete_business_rule',
       'k3cloud_delete_convert_rule_extension',
       'k3cloud_delete_operation',
@@ -110,6 +113,7 @@ describe('buildK3CloudTools', () => {
       'k3cloud_list_objects',
       'k3cloud_list_operations',
       'k3cloud_list_subsystems',
+      'k3cloud_register_sysreport_python_plugins',
       'k3cloud_remove_convert_plugin',
       'k3cloud_search_metadata',
       'k3cloud_set_convert_filter',

@@ -21,6 +21,9 @@
 import { Buffer } from 'node:buffer';
 import { encodeAppLayer, decodeAppLayerString } from './codec';
 import { buildClientInfo } from './clientinfo';
+import { createLogger } from '../../../logger';
+
+const logger = createLogger('erp/k3cloud/http');
 
 export interface KdSession {
   /** K/3 Cloud Web Server root, e.g. "http://localhost/k3cloud". No trailing slash. */
@@ -31,6 +34,14 @@ export interface KdSession {
   kdServiceSessionId?: string;
   /** Returned by Login flow; not currently used outside Login. */
   accessToken?: string;
+  /**
+   * Server-issued obfuscated RSA public key (or empty string when password
+   * encryption is disabled). Cached after the first `GetPublicKeyInfo` so
+   * the CAPTCHA retry path doesn't re-fetch it — the redundant call has
+   * empirically rotated the ASP.NET_SessionId on some K/3 builds, breaking
+   * the session-bound VerificationCode lookup.
+   */
+  obfuscatedKey?: string;
 }
 
 /**
@@ -74,6 +85,44 @@ export class BosResponseError extends Error {
     this.name = 'BosResponseError';
     this.responseBody = responseBody;
   }
+}
+
+/**
+ * Thrown when a business `*.kdsvc` call is rejected by the server because the
+ * session is not fully authenticated. The wire signature is HTTP **200** with
+ * a bare text body like:
+ *   "401 Forbidden ByRspRetStatusCode -- N001: Unexpectable request."
+ * It is neither a `response_error:` envelope nor a 4xx status, so without this
+ * guard the raw text slips through to `parseJsonResponse` and surfaces as a
+ * misleading "not valid JSON" positional error (GitHub issue #7).
+ *
+ * Root cause (2026-06-05 实证): login "succeeded" enough to hand back cookies
+ * but did NOT fully authenticate — most commonly a HARD-expired password
+ * (`CheckPasswordPolicy`, isSuccess=false) that the connector previously
+ * treated as connected, or an expired/rotated session. The unauthenticated
+ * session then gets every business RPC rejected with this body. We throw a
+ * typed error so callers / the agent get an actionable message and the
+ * verbatim server text. (The `enableFlatShake` handshake header seen on the
+ * login response is unrelated — it was an early red herring.)
+ */
+export class BosRequestRejectedError extends Error {
+  responseBody: string;
+  httpStatus: number;
+  constructor(message: string, responseBody: string, httpStatus: number) {
+    super(message);
+    this.name = 'BosRequestRejectedError';
+    this.responseBody = responseBody;
+    this.httpStatus = httpStatus;
+  }
+}
+
+/**
+ * Signature of the K/3 "request rejected" body. `ByRspRetStatusCode` is the
+ * stable token across HTTP status codes / N-codes / locale-translated messages,
+ * so matching it alone keeps the guard robust without over-fitting one body.
+ */
+function isServerRejectionBody(body: string): boolean {
+  return body.includes('ByRspRetStatusCode');
 }
 
 export interface KdsvcResponse {
@@ -141,11 +190,24 @@ export async function callKdsvc(
   if (session.kdServiceSessionId) headers['kdservice-sessionid'] = session.kdServiceSessionId;
   if (cookies.length) headers['cookie'] = cookies.join('; ');
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: form.toString(),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: form.toString(),
+    });
+  } catch (err) {
+    // Log full URL + transport code BEFORE the humanized error wraps it —
+    // the caught Error retains only the host, so without this line a support
+    // bundle can't tell which endpoint failed when multiple were in flight.
+    const code = extractTransportCode((err as { cause?: unknown })?.cause) ?? 'unknown';
+    void logger.error(
+      `${serviceName}.${methodName} transport failed | url=${url} | code=${code}`,
+      err instanceof Error ? err : undefined,
+    );
+    throw humanizeTransportError(err, url);
+  }
 
   // Node fetch decompresses gzip transparently. The response body, after
   // HTTP-layer gunzip, is *usually* an app-layer base64+zlib payload — but
@@ -161,9 +223,36 @@ export async function callKdsvc(
   // surfaces the actual server message via the thrown Error.
   const trimmed = bodyText.trim();
   if (trimmed.startsWith('response_error:') || trimmed.startsWith('"response_error:')) {
+    void logger.warn(
+      `${serviceName}.${methodName} response_error | url=${url} | status=${res.status} | body=${trimmed.slice(0, 300)}`,
+    );
     throw new BosResponseError(
       `${serviceName}.${methodName} returned response_error envelope: ${trimmed.slice(0, 1000)}`,
       trimmed,
+    );
+  }
+
+  // Business RPC rejected for an unauthenticated session: HTTP 200 with a bare
+  // text body, NOT a response_error envelope. Catch the signature here so it
+  // doesn't masquerade as a downstream JSON-parse failure.
+  if (isServerRejectionBody(trimmed)) {
+    void logger.warn(
+      `${serviceName}.${methodName} request rejected (session not authenticated?) | url=${url} | status=${res.status} | body=${trimmed.slice(0, 300)}`,
+    );
+    throw new BosRequestRejectedError(
+      `K/3 服务器拒绝了该请求(会话未完成认证 / 登录不完整):${trimmed.slice(0, 200)} — ` +
+        `常见原因:账号密码已过期(登录看似成功实则未认证),或会话已过期。` +
+        `请重置密码 / 重新连接项目后重试。`,
+      trimmed,
+      res.status,
+    );
+  }
+
+  // 4xx/5xx without the response_error envelope — server reached, but rejected
+  // before BOS layer. Helpful when reverse-proxy / IIS intercepts the request.
+  if (res.status >= 400) {
+    void logger.warn(
+      `${serviceName}.${methodName} http ${res.status} | url=${url} | body=${trimmed.slice(0, 300)}`,
     );
   }
 
@@ -190,6 +279,60 @@ function decodeAppLayerOrRaw(rawText: string): string {
     return rawText;
   }
 }
+
+/**
+ * Node's undici throws a bare `TypeError: fetch failed` for every transport
+ * problem (TCP refused, DNS miss, TLS issue, timeout). The actionable detail
+ * sits in `err.cause.code` — without surfacing it the user has to guess
+ * whether IIS is down, the URL is typoed, or a firewall is in the way.
+ */
+function humanizeTransportError(err: unknown, url: string): Error {
+  if (!(err instanceof TypeError) || err.message !== 'fetch failed') {
+    return err instanceof Error ? err : new Error(String(err));
+  }
+  const code = extractTransportCode((err as { cause?: unknown }).cause);
+  const host = safeHost(url);
+  const hint = code ? TRANSPORT_HINTS[code] : null;
+  const detail = hint ?? (code ? `transport error ${code}` : 'transport error');
+  const wrapped = new Error(`${detail} — ${host}`);
+  (wrapped as { cause?: unknown }).cause = err;
+  return wrapped;
+}
+
+function extractTransportCode(cause: unknown): string | null {
+  if (!cause || typeof cause !== 'object') return null;
+  const c = cause as { code?: unknown; errors?: unknown };
+  if (typeof c.code === 'string') return c.code;
+  // Node 22 dual-stack lookup wraps v4+v6 attempts in AggregateError.
+  if (Array.isArray(c.errors)) {
+    for (const e of c.errors) {
+      const inner = (e as { code?: unknown } | null)?.code;
+      if (typeof inner === 'string') return inner;
+    }
+  }
+  return null;
+}
+
+function safeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+const TRANSPORT_HINTS: Record<string, string> = {
+  ECONNREFUSED: 'connection refused (IIS not running / wrong port / firewall blocked)',
+  ENOTFOUND: 'host not found (typo in URL / DNS unreachable)',
+  ETIMEDOUT: 'connection timed out (network unreachable / firewall dropping packets)',
+  EHOSTUNREACH: 'host unreachable (no route)',
+  ENETUNREACH: 'network unreachable',
+  ECONNRESET: 'connection reset (proxy / firewall interrupted)',
+  EPIPE: 'connection pipe broken',
+  CERT_HAS_EXPIRED: 'TLS certificate expired',
+  DEPTH_ZERO_SELF_SIGNED_CERT: 'TLS certificate is self-signed (not trusted)',
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'TLS certificate chain incomplete',
+};
 
 /**
  * Pull cookie values from Set-Cookie response headers and update the session.

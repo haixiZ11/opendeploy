@@ -1,7 +1,7 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@renderer/stores/settings-store';
-import { PROVIDERS, PROVIDER_BY_ID } from '@renderer/data/providers';
+import { PROVIDERS, PROVIDER_BY_ID, resolveActiveModel } from '@renderer/data/providers';
 import { Icons } from '@renderer/components/icons';
 import { LogoMark } from '@renderer/components/LogoMark';
 
@@ -26,8 +26,35 @@ export function WizardPage({ onFinish }: WizardPageProps) {
   const [step, setStep] = useState(0);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [accessMode, setAccessMode] = useState<'payg' | 'plan'>('payg');
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
   const setLlmProvider = useSettingsStore((s) => s.setLlmProvider);
   const setApiKey = useSettingsStore((s) => s.setApiKey);
+  const setPlanApiKey = useSettingsStore((s) => s.setPlanApiKey);
+  const setApiAccessMode = useSettingsStore((s) => s.setApiAccessMode);
+  const setModel = useSettingsStore((s) => s.setModel);
+
+  const selectedProviderObj = selectedProvider ? PROVIDER_BY_ID[selectedProvider] : undefined;
+
+  // Reset model when provider switches: pick the recommended model of the new
+  // provider so the dropdown is never empty. Ollama (free-form input) stays ''.
+  useEffect(() => {
+    if (!selectedProvider || selectedProvider === 'ollama') {
+      setSelectedModelId('');
+      return;
+    }
+    const m = resolveActiveModel(selectedProvider, undefined);
+    setSelectedModelId(m?.id ?? '');
+  }, [selectedProvider]);
+
+  // Reset access mode when provider switches — a provider may not advertise
+  // a plan endpoint at all, so always start at 'payg' (safe default).
+  // Also clear the key input on switches so a key meant for one mode/provider
+  // doesn't accidentally get saved under another (e.g. tp-xxxx into apiKeys).
+  useEffect(() => {
+    setAccessMode('payg');
+    setApiKeyInput('');
+  }, [selectedProvider]);
 
   // Stepper only covers the two "real" onboarding steps — Step 0 is a hero.
   const steps = [t('wizard.stepProvider'), t('wizard.stepDone')];
@@ -40,7 +67,19 @@ export function WizardPage({ onFinish }: WizardPageProps) {
     if (selectedProvider) {
       await setLlmProvider(selectedProvider);
       if (selectedProvider !== 'ollama' && apiKeyInput.trim()) {
-        await setApiKey(selectedProvider, apiKeyInput.trim());
+        // Route the key into the correct bucket so future loads pick it up
+        // when the same mode is active. Plan/payg keys are kept independent
+        // (e.g. small users on payg can keep their sk-xxxx untouched after
+        // experimenting with a plan tp-xxxx).
+        if (accessMode === 'plan') {
+          await setPlanApiKey(selectedProvider, apiKeyInput.trim());
+        } else {
+          await setApiKey(selectedProvider, apiKeyInput.trim());
+        }
+        await setApiAccessMode(selectedProvider, accessMode);
+      }
+      if (selectedProvider !== 'ollama' && selectedModelId) {
+        await setModel(selectedProvider, selectedModelId);
       }
     }
     onFinish();
@@ -148,6 +187,68 @@ export function WizardPage({ onFinish }: WizardPageProps) {
                         <div className="hint">{t('settings.ollamaNoKey')}</div>
                       ) : (
                         <>
+                          {/* Access-mode toggle: only shown for providers that
+                              actually publish a token-plan endpoint. Hiding it
+                              for non-plan providers (DeepSeek/GPT/Claude/…)
+                              avoids confusing 90 % of users with a control
+                              they have no use for. */}
+                          {selectedProviderObj?.tokenPlan && (
+                            <div style={{ marginBottom: 12 }}>
+                              <label
+                                style={{
+                                  display: 'block',
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  marginBottom: 6
+                                }}
+                              >
+                                {t('settings.accessMode.label')}
+                              </label>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  type="button"
+                                  className={`btn${accessMode === 'payg' ? ' primary' : ''}`}
+                                  onClick={() => {
+                                    setAccessMode('payg');
+                                    setApiKeyInput('');
+                                  }}
+                                >
+                                  {t('settings.accessMode.payg')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`btn${accessMode === 'plan' ? ' primary' : ''}`}
+                                  onClick={() => {
+                                    setAccessMode('plan');
+                                    setApiKeyInput('');
+                                  }}
+                                >
+                                  {t('settings.accessMode.plan')}
+                                </button>
+                              </div>
+                              <div
+                                className="hint"
+                                style={{ marginTop: 6, fontSize: 12 }}
+                              >
+                                {accessMode === 'plan'
+                                  ? t('settings.accessMode.planHint')
+                                  : t('settings.accessMode.paygHint')}
+                                {accessMode === 'plan' && selectedProviderObj.tokenPlan.docsUrl && (
+                                  <>
+                                    {'  '}
+                                    <a
+                                      href={selectedProviderObj.tokenPlan.docsUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{ color: 'var(--accent-deep)' }}
+                                    >
+                                      {t('settings.accessMode.planDocsLink')}
+                                    </a>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <label
                             style={{
                               display: 'block',
@@ -156,13 +257,19 @@ export function WizardPage({ onFinish }: WizardPageProps) {
                               marginBottom: 6
                             }}
                           >
-                            {t('settings.apiKey')}
+                            {accessMode === 'plan'
+                              ? t('settings.planApiKey')
+                              : t('settings.apiKey')}
                           </label>
                           <input
                             type="password"
                             value={apiKeyInput}
                             onChange={(e) => setApiKeyInput(e.target.value)}
-                            placeholder={t('settings.apiKeyPlaceholder')}
+                            placeholder={
+                              accessMode === 'plan'
+                                ? t('settings.planApiKeyPlaceholder')
+                                : t('settings.apiKeyPlaceholder')
+                            }
                             style={{
                               width: '100%',
                               padding: '8px 12px',
@@ -174,6 +281,39 @@ export function WizardPage({ onFinish }: WizardPageProps) {
                               fontFamily: 'var(--font-mono)'
                             }}
                           />
+                          {selectedProviderObj && selectedProviderObj.models.length > 0 && (
+                            <div style={{ marginTop: 12 }}>
+                              <label
+                                style={{
+                                  display: 'block',
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  marginBottom: 6
+                                }}
+                              >
+                                {t('settings.model')}
+                              </label>
+                              <select
+                                value={selectedModelId}
+                                onChange={(e) => setSelectedModelId(e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 6,
+                                  background: 'var(--surface)',
+                                  color: 'var(--ink)',
+                                  fontSize: 13
+                                }}
+                              >
+                                {selectedProviderObj.models.map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.label}{m.recommended ? ` (${t('settings.recommendedShort')})` : ''} — {m.hint}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -194,7 +334,13 @@ export function WizardPage({ onFinish }: WizardPageProps) {
                       }}
                     >
                       <span className="muted small">LLM</span>
-                      <span className="mono small">{selectedProviderLabel}</span>
+                      <span className="mono small">
+                        {selectedProviderLabel}
+                        {selectedProviderObj && selectedModelId && (() => {
+                          const m = selectedProviderObj.models.find((x) => x.id === selectedModelId);
+                          return m ? ` · ${m.label}` : '';
+                        })()}
+                      </span>
                     </div>
                     <div
                       style={{

@@ -48,6 +48,7 @@ import {
 import { unlink } from 'node:fs/promises';
 import { extractKernelXml, parseMetaDataXml } from './rpc/metadata-xml';
 import { login } from './rpc/login';
+import { fetchCaptchaImage, captchaToDataUrl } from './rpc/captcha';
 import { getNextSequenceInt32 } from './rpc/sequence';
 import { getAllConvertPaths, getConvertRule } from './rpc/convert-rules';
 import {
@@ -104,7 +105,13 @@ import {
   parsePolicyOidMapFromLive,
 } from './rpc/transform-extension-wire';
 import { saveExtension, saveExtensionRaw, type SaveExtensionRawMeta } from './rpc/save-for-ide';
-import { extractLayoutInfoOid } from './rpc/layout-discovery';
+import {
+  extractLayoutInfoOid,
+  extractSysReportFormOid,
+  extractSqlDataSourceOid,
+} from './rpc/layout-discovery';
+import type { BosRptKeyWordFieldElement } from './rpc/sysreport-keyword-types';
+import type { BosRptFilterGridFieldElement } from './rpc/sysreport-gridfield-types';
 import { extractExistingExtensionElements } from './rpc/existing-elements';
 import type {
   BosFormOperationElement,
@@ -139,6 +146,15 @@ import {
 } from './rpc/appearance-locator';
 import { getBridge } from './bridge';
 import type { KdSession } from './rpc/http-client';
+import {
+  callCreateFromTemplate,
+  type CreateFromTemplateInput,
+} from './rpc/create-from-template';
+import {
+  callRegisterSysReportPlugin,
+  type RegisterSysReportPluginInput,
+  type RegisterSysReportPluginResult,
+} from './rpc/register-sysreport-plugin';
 import type {
   BosRpcCredentials,
   ExtensionMeta,
@@ -151,6 +167,75 @@ import type {
 import type { ErpConnector, ListObjectsOptions } from '../types';
 
 /**
+ * Server-side login that requires a CAPTCHA. The caller (active.ts) catches
+ * this, fetches the image via the preserved session, prompts the user, then
+ * resumes via `submitCaptcha(code)`. The session that produced this error
+ * MUST be the one used to fetch the image — server binds the random code
+ * to `Session["VerificationCode"]`, keyed by ASP.NET_SessionId cookie.
+ *
+ * Triggered when `LoginResult.MessageCode === '002099000005374'`. The data
+ * center's `IsNeedValicationCode` flag (管理中心 → 系统参数 → 登录时启用验证码)
+ * is the toggle. See `.scratch/recon/captcha-login.md`.
+ */
+export class CaptchaRequiredError extends Error {
+  constructor() {
+    super('CAPTCHA required');
+    this.name = 'CaptchaRequiredError';
+  }
+}
+
+/**
+ * The 2nd-attempt login (with `validationCode`) returned a CAPTCHA-related
+ * failure. `kind` tells the caller whether to refresh the image and retry
+ * (`wrong` / `expired`) or surface as a fatal connect error (`other`).
+ */
+export class CaptchaLoginError extends Error {
+  constructor(
+    message: string,
+    public readonly kind: 'wrong' | 'expired' | 'other',
+    public readonly messageCode?: string,
+  ) {
+    super(message);
+    this.name = 'CaptchaLoginError';
+  }
+}
+
+/**
+ * Detect the three CAPTCHA-related LoginResult outcomes. We prefer the
+ * stable BOS MessageCode (immune to lcid), but fall back to message-text
+ * substrings since some K/3 builds drop MessageCode from the wire (seen
+ * on standard V9 demo 2026-05-18). The Chinese substrings come straight
+ * from `Kingdee.BOS.ServiceFacade.ServicesStub.User.UserService.CheckVaicationCode`
+ * (reachable via `.scratch/decompile/captcha-spike/UserService.cs`).
+ */
+function isCaptchaRequiredFailure(code: string | undefined, message: string | undefined): boolean {
+  if (code === '002099000005374') return true;
+  const m = (message ?? '').toLowerCase();
+  return (
+    (message ?? '').includes('请输入系统验证码') ||
+    (m.includes('captcha') && (m.includes('required') || m.includes('enter')))
+  );
+}
+
+function isCaptchaWrongFailure(code: string | undefined, message: string | undefined): boolean {
+  if (code === '002099000005375') return true;
+  const m = (message ?? '').toLowerCase();
+  return (
+    (message ?? '').includes('系统验证码输入错误') ||
+    (m.includes('captcha') && (m.includes('incorrect') || m.includes('wrong') || m.includes('invalid')))
+  );
+}
+
+function isCaptchaExpiredFailure(code: string | undefined, message: string | undefined): boolean {
+  if (code === '002099000005373') return true;
+  const m = (message ?? '').toLowerCase();
+  return (
+    (message ?? '').includes('系统验证码不存在') ||
+    (m.includes('captcha') && (m.includes('expired') || m.includes('refresh')))
+  );
+}
+
+/**
  * BOS RPC connector. One class serves all K/3 Cloud deployments
  * (V9/V10, standard/enterprise) — release/edition don't change how the
  * RPC behaves, only the SaveForIDE wire format slightly varies (handled
@@ -158,6 +243,14 @@ import type { ErpConnector, ListObjectsOptions } from '../types';
  */
 export class K3CloudConnector implements ErpConnector {
   private session: KdSession | null = null;
+
+  /**
+   * Session retained between the first failed login (CAPTCHA required) and
+   * the user's CAPTCHA submission. Keeps the ASP.NET_SessionId cookie so
+   * the server-side `Session["VerificationCode"]` written by ValidateCode.ashx
+   * matches the resubmit. Cleared once login succeeds or the user cancels.
+   */
+  private pendingSession: KdSession | null = null;
   /**
    * Lazy cache of T_META_LOOKUPCLASS entries (FormId → GUID). The full set
    * is ~1864 rows / 1 MB JSON; one fetch covers the whole session. We pay
@@ -189,21 +282,120 @@ export class K3CloudConnector implements ErpConnector {
   /** Open the BOS session. Idempotent — second call no-ops. */
   async connect(): Promise<void> {
     if (this.session) return;
-    const res = await login({
-      baseUrl: this.config.baseUrl,
-      acctId: this.config.acctId,
-      username: this.config.username,
-      password: this.config.password,
-    });
-    if (!res.isSuccess) {
-      throw new Error(`BOS login failed: ${res.message ?? 'unknown'}`);
+    const session: KdSession = { baseUrl: this.config.baseUrl };
+    const res = await login(
+      {
+        baseUrl: this.config.baseUrl,
+        acctId: this.config.acctId,
+        username: this.config.username,
+        password: this.config.password,
+      },
+      { session },
+    );
+    if (res.isSuccess) {
+      this.session = res.session;
+      return;
     }
-    this.session = res.session;
+    // CheckPasswordPolicy with isSuccess=false = password HARD-expired
+    // ("用户密码已过期"). K/3 still hands back cookies, but the session is NOT
+    // fully authenticated — every business RPC is then rejected with
+    // "ByRspRetStatusCode N001 Unexpectable request" (issue #7, 2026-06-05
+    // 实证). Treating it as connected silently hands the user a dead session.
+    // Surface it so they reset the password first. (The "expires in N days"
+    // advisory returns isSuccess=true and is handled by the branch above, so
+    // reaching here always means a hard, unusable expiry.)
+    if (res.messageCode === 'CheckPasswordPolicy') {
+      throw new Error(
+        `BOS 登录失败：${res.message ?? '用户密码已过期'} — 会话未完成认证，业务操作会被服务端拒绝。请先在金蝶客户端/管理中心重置密码，再重新连接。`,
+      );
+    }
+    // 002099000005374 = "请输入系统验证码" — surface as typed error so the
+    // UI layer can fetch the image and prompt the user. The session (with
+    // ASP.NET_SessionId cookie) is preserved across the round-trip.
+    //
+    // Fallback to message-text matching: some K/3 server builds don't
+    // serialize MessageCode (empirically observed 2026-05-18 on standard
+    // V9 demo), only Message. The Chinese phrasing is fixed in the BOS
+    // resource catalog, English ports fall back to "CAPTCHA".
+    if (isCaptchaRequiredFailure(res.messageCode, res.message)) {
+      this.pendingSession = res.session;
+      throw new CaptchaRequiredError();
+    }
+    throw new Error(`BOS login failed: ${res.message ?? 'unknown'}`);
+  }
+
+  /**
+   * Fetch a fresh CAPTCHA image. Only valid while we're in the "pending
+   * captcha" state (i.e. between `connect()` throwing CaptchaRequiredError
+   * and `submitCaptcha`). The server rotates the code on each call —
+   * use this for both the initial display and refresh-on-wrong-input.
+   */
+  async fetchCaptchaImage(): Promise<{ dataUrl: string }> {
+    const sess = this.pendingSession;
+    if (!sess) {
+      throw new Error('fetchCaptchaImage: no pending captcha session');
+    }
+    const img = await fetchCaptchaImage(sess);
+    return { dataUrl: captchaToDataUrl(img) };
+  }
+
+  /**
+   * Submit the user-entered CAPTCHA code as the 2nd login attempt. On success
+   * the pending session graduates to `this.session`. On a CAPTCHA-related
+   * failure, throws `CaptchaLoginError` with a `kind` the caller uses to
+   * decide whether to refresh the image (`wrong` / `expired`) or give up.
+   */
+  async submitCaptcha(code: string): Promise<void> {
+    const sess = this.pendingSession;
+    if (!sess) {
+      throw new Error('submitCaptcha: no pending captcha session');
+    }
+    const res = await login(
+      {
+        baseUrl: this.config.baseUrl,
+        acctId: this.config.acctId,
+        username: this.config.username,
+        password: this.config.password,
+      },
+      { session: sess, validationCode: code },
+    );
+    if (res.isSuccess) {
+      this.session = res.session;
+      this.pendingSession = null;
+      return;
+    }
+    // CheckPasswordPolicy with isSuccess=false = the CAPTCHA was accepted but
+    // the password is HARD-expired — the session is unauthenticated and every
+    // business RPC would 401 (issue #7). Surface it so the user resets the
+    // password instead of "connecting" a dead session.
+    if (res.messageCode === 'CheckPasswordPolicy') {
+      this.pendingSession = null;
+      throw new Error(
+        `BOS 登录失败：${res.message ?? '用户密码已过期'} — 验证码已通过但密码已过期，会话未认证。请重置密码后再连接。`,
+      );
+    }
+    // 002099000005375 = "系统验证码输入错误" — refresh + retry.
+    // 002099000005373 = "系统验证码不存在,请刷新验证码" — server session
+    //   expired or rotated; refreshing rebinds a fresh code to the same
+    //   ASP.NET session, so this is also recoverable.
+    // Anything else: fall through as "other" and the caller surfaces the
+    // raw server message. Text-fallback covers servers that don't serialize
+    // MessageCode.
+    const kind: 'wrong' | 'expired' | 'other' =
+      isCaptchaWrongFailure(res.messageCode, res.message) ? 'wrong'
+        : isCaptchaExpiredFailure(res.messageCode, res.message) ? 'expired'
+          : 'other';
+    throw new CaptchaLoginError(
+      res.message ?? 'unknown',
+      kind,
+      res.messageCode,
+    );
   }
 
   /** Forget the cached session and any per-session caches. */
   async disconnect(): Promise<void> {
     this.session = null;
+    this.pendingSession = null;
     this.lookupObjectsByFormId = null;
     this.enumObjectsByName = null;
     this.cachedIsv = null;
@@ -1569,6 +1761,246 @@ export class K3CloudConnector implements ErpConnector {
         `删除按钮失败：${result.messageTitle ?? ''} ${result.messageDetail ?? '<no detail>'}`,
       );
     }
+  }
+
+  /**
+   * Create a new metaobject by inheriting from a BOS_* template via SaveForIDEV9.
+   *
+   * This follows the same wire path as BOS Designer "New Wizard → Template Inheritance"
+   * and is functionally identical to k3cloud_create_extension but points
+   * BaseObjectId at a BOS_* template instead of a business object.
+   *
+   * Plan 7.6 — see `rpc/create-from-template.ts` for DCXML envelope details.
+   */
+  async createFromTemplate(
+    input: Omit<CreateFromTemplateInput, 'mainVersion'>,
+  ) {
+    const session = this.requireSession();
+    return callCreateFromTemplate(session, { ...input, mainVersion: null });
+  }
+
+  /**
+   * Append a Python plugin to an existing SysReport's SysReportServicePlugins
+   * collection.
+   *
+   * If `input.baseObjectId` is omitted, the connector reads the SysReport's
+   * FKERNELXML metadata to extract the `oid` attribute of the root element
+   * (which equals the template baseline, e.g. "BOS_SimpleSysReport"). This
+   * auto-resolve avoids the caller needing to know which template was used.
+   *
+   * Plan 7.6 Task 5 — see `rpc/register-sysreport-plugin.ts` for wire details.
+   */
+  async registerSysReportPythonPlugin(
+    input: Omit<RegisterSysReportPluginInput, 'baseObjectId'> & { baseObjectId?: string },
+  ): Promise<RegisterSysReportPluginResult> {
+    const session = this.requireSession();
+    let baseObjectId = input.baseObjectId;
+    if (!baseObjectId) {
+      // Auto-resolve: fetch FKERNELXML and parse the oid from the root element.
+      const md = await getBusinessObjectMetaData(session, input.formId, []);
+      const xml = extractKernelXml(md.metaData) ?? '';
+      // The FKERNELXML root element is e.g.:
+      //   <SysReportForm action="edit" oid="BOS_SimpleSysReport" ElementType="900" ...>
+      const oidMatch = xml.match(/oid="([^"]+)"/);
+      if (!oidMatch) {
+        throw new Error(
+          `registerSysReportPythonPlugin: 无法从 ${input.formId} 的 FKERNELXML 中解析 oid(baseObjectId)。` +
+          '请手动传入 baseObjectId 参数。',
+        );
+      }
+      baseObjectId = oidMatch[1];
+    }
+    return callRegisterSysReportPlugin(session, { ...input, baseObjectId });
+  }
+
+  /**
+   * Plan 7.8 Phase 1 — append a batch of filter parameters (RptKeyWordField)
+   * to an existing SysReport's `<SQLDataSource><KeyWordList>`. Route B envelope
+   * rebuild — same path used by `addCustomOperation` / `removeOperation`
+   * (saveExtension), with the SysReport-specific envelope (SysReportForm +
+   * SQLDataSource oids) emitted from `dcxml.ts` when `addKeyWordFields` is set.
+   *
+   * Requires:
+   *   - formId resolves to a SysReport (`modelTypeId === 900`); BillForm /
+   *     BaseDataForm extensions should use `addFields` instead.
+   *   - Parent template FKERNELXML has both `<SysReportForm oid=...>` and
+   *     `<SQLDataSource oid=...>` (used as `action="edit"` diff anchors).
+   *
+   * BOS Designer F5 reveals the new parameters; no client restart required
+   * (filter panel is metadata-driven, runtime fetches every open).
+   */
+  async addSysReportFilterParameters(args: {
+    formId: string;
+    keyWordFields: BosRptKeyWordFieldElement[];
+  }): Promise<{ added: number; isSuccess: boolean; messageTitle?: string; messageDetail?: string }> {
+    const session = this.requireSession();
+    const obj = await this.getObject(args.formId);
+    if (!obj) throw new Error(`SysReport ${args.formId} 不存在`);
+    if (obj.modelTypeId !== 900) {
+      throw new Error(
+        `${args.formId} 不是 SysReport(modelTypeId=${obj.modelTypeId},期望 900)。本工具仅支持账表对象。`,
+      );
+    }
+    if (!obj.baseObjectId) {
+      throw new Error(`SysReport ${args.formId} 缺 BaseObjectId — 无法 add filter parameters`);
+    }
+    if (obj.subsystemId == null) {
+      throw new Error(`SysReport ${args.formId} 缺 subsystemId — 元数据不完整`);
+    }
+
+    const extXml = await this.getKernelXml(args.formId);
+    if (!extXml) throw new Error(`SysReport ${args.formId} 无 FKERNELXML`);
+
+    // layoutInfoOid: SysReport mode tolerates empty. Phase 4 smoke 2026-05-20
+    // verified — a freshly created SysReport (no user layout edits yet) has no
+    // LayoutInfo in its FKERNELXML at all; demanding one bricks Phase 1/2
+    // tools that only touch SQLDataSource (no layout side effect). Emitter
+    // skips <LayoutInfos> wrapper when this is empty AND there are no layout
+    // changes — which is exactly the case here (add_*_filter_parameters /
+    // add_*_columns never touches Appearances).
+    const layoutInfoOid = extractLayoutInfoOid(extXml) ?? '';
+
+    // sysReportEnvelopeOid = templateId (= obj.baseObjectId). BOS extension
+    // model puts parent oid on the envelope's action="edit" element — this is
+    // what saleorder_parent.xml / sysreport-template--kf9157e0.xml both show
+    // (e.g. `<SysReportForm action="edit" oid="BOS_SimpleSysReport">`).
+    const sysReportEnvelopeOid = obj.baseObjectId;
+
+    // sqlDataSourceOid — Phase 0 spike showed SQLDataSource is a ComplexProperty
+    // child of SysReportForm. Real captures so far (kf9157e0 sample) don't show
+    // explicit SQLDataSource oid because they don't ship action="edit" on it.
+    // We try-extract from extXml; if absent, pass empty (emitter falls back to
+    // bare action="edit" without oid, which DcxmlSerializer accepts for inline
+    // ComplexProperty diff — to be validated by smoke).
+    const sqlDataSourceOid = extractSqlDataSourceOid(extXml) ?? '';
+
+    const existing = extractExistingExtensionElements(extXml);
+
+    const req: SaveExtensionRequest = {
+      extension: {
+        formId: obj.id,
+        baseObjectId: obj.baseObjectId,
+        modelTypeId: obj.modelTypeId,
+        subSystemId: obj.subsystemId,
+        name: [{ localeId: 2052, value: obj.name }],
+        isv: { devCode: this.config.devCode },
+      },
+      isNew: false,
+      layoutInfoOid,
+      sysReportEnvelopeOid,
+      sqlDataSourceOid,
+      existingFieldsRaw: existing.fields,
+      existingAppearancesRaw: existing.appearances,
+      existingPluginsRaw: existing.plugins,
+      existingEntriesRaw: existing.entries,
+      existingEntryAppearancesRaw: existing.entryAppearances,
+      existingTabPagesRaw: existing.tabPages,
+      existingTabControlsRaw: existing.tabControls,
+      existingFormOperationsRaw: existing.formOperations,
+      existingHeadEntityRaw: existing.headEntity,
+      existingKeyWordListRaw: existing.keyWordList,
+      addKeyWordFields: args.keyWordFields,
+    };
+    const result = await saveExtension(session, req);
+    if (!result.isSuccess) {
+      throw new Error(
+        `add_sysreport_filter_parameters 失败:${result.messageTitle ?? ''} ${result.messageDetail ?? '<no detail>'}`,
+      );
+    }
+    return {
+      added: args.keyWordFields.length,
+      isSuccess: result.isSuccess,
+      messageTitle: result.messageTitle ?? undefined,
+      messageDetail: result.messageDetail ?? undefined,
+    };
+  }
+
+  /**
+   * Plan 7.8 Phase 2 — append a batch of report columns (RptFilterGridField)
+   * to an existing SysReport's `<SQLDataSource><FieldList>`. Route B envelope
+   * rebuild — same path as `addSysReportFilterParameters`, but writing to
+   * FieldList (报表列) instead of KeyWordList (过滤参数).
+   *
+   * Requires:
+   *   - formId resolves to a SysReport (`modelTypeId === 900`); BillForm /
+   *     BaseDataForm extensions should use `addFields` instead.
+   *   - Parent template FKERNELXML has both `<SysReportForm oid=...>` and
+   *     `<SQLDataSource oid=...>` (used as `action="edit"` diff anchors).
+   *
+   * BOS Designer F5 reveals the new columns; no client restart required
+   * (FieldList is metadata-driven, runtime fetches every open).
+   */
+  async addSysReportColumns(args: {
+    formId: string;
+    filterGridFields: BosRptFilterGridFieldElement[];
+  }): Promise<{ added: number; isSuccess: boolean; messageTitle?: string; messageDetail?: string }> {
+    const session = this.requireSession();
+    const obj = await this.getObject(args.formId);
+    if (!obj) throw new Error(`SysReport ${args.formId} 不存在`);
+    if (obj.modelTypeId !== 900) {
+      throw new Error(
+        `${args.formId} 不是 SysReport(modelTypeId=${obj.modelTypeId},期望 900)。本工具仅支持账表对象。`,
+      );
+    }
+    if (!obj.baseObjectId) {
+      throw new Error(`SysReport ${args.formId} 缺 BaseObjectId — 无法 add columns`);
+    }
+    if (obj.subsystemId == null) {
+      throw new Error(`SysReport ${args.formId} 缺 subsystemId — 元数据不完整`);
+    }
+
+    const extXml = await this.getKernelXml(args.formId);
+    if (!extXml) throw new Error(`SysReport ${args.formId} 无 FKERNELXML`);
+
+    // See addSysReportFilterParameters above for the rationale on these three
+    // values — same logic applies here (extract layoutInfoOid from child XML;
+    // envelope oid = templateId; SQLDataSource oid optional). Phase 4 smoke
+    // 2026-05-20: layoutInfoOid tolerated empty (emitter skips <LayoutInfos>
+    // wrapper when SysReport mode + no appearance edits).
+    const layoutInfoOid = extractLayoutInfoOid(extXml) ?? '';
+    const sysReportEnvelopeOid = obj.baseObjectId;
+    const sqlDataSourceOid = extractSqlDataSourceOid(extXml) ?? '';
+
+    const existing = extractExistingExtensionElements(extXml);
+
+    const req: SaveExtensionRequest = {
+      extension: {
+        formId: obj.id,
+        baseObjectId: obj.baseObjectId,
+        modelTypeId: obj.modelTypeId,
+        subSystemId: obj.subsystemId,
+        name: [{ localeId: 2052, value: obj.name }],
+        isv: { devCode: this.config.devCode },
+      },
+      isNew: false,
+      layoutInfoOid,
+      sysReportEnvelopeOid,
+      sqlDataSourceOid,
+      existingFieldsRaw: existing.fields,
+      existingAppearancesRaw: existing.appearances,
+      existingPluginsRaw: existing.plugins,
+      existingEntriesRaw: existing.entries,
+      existingEntryAppearancesRaw: existing.entryAppearances,
+      existingTabPagesRaw: existing.tabPages,
+      existingTabControlsRaw: existing.tabControls,
+      existingFormOperationsRaw: existing.formOperations,
+      existingHeadEntityRaw: existing.headEntity,
+      existingKeyWordListRaw: existing.keyWordList,
+      existingFieldListRaw: existing.fieldList,
+      addFilterGridFields: args.filterGridFields,
+    };
+    const result = await saveExtension(session, req);
+    if (!result.isSuccess) {
+      throw new Error(
+        `add_sysreport_columns 失败:${result.messageTitle ?? ''} ${result.messageDetail ?? '<no detail>'}`,
+      );
+    }
+    return {
+      added: args.filterGridFields.length,
+      isSuccess: result.isSuccess,
+      messageTitle: result.messageTitle ?? undefined,
+      messageDetail: result.messageDetail ?? undefined,
+    };
   }
 
   /**

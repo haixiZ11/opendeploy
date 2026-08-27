@@ -10,8 +10,10 @@ import {
 } from './projects/store';
 import {
   getConnectionState,
+  refreshCaptcha,
   setActiveProject,
-  subscribe
+  submitCaptcha,
+  subscribe,
 } from './erp/active';
 import { getDataCenterList } from './erp/k3cloud/rpc/data-center';
 import type { ErpConnectionState, Project } from '@shared/erp-types';
@@ -75,4 +77,11 @@ export function registerProjectsIpc(getMainWindow: () => BrowserWindow | null): 
     'projects:list-data-centers',
     async (_e, baseUrl: string) => getDataCenterList(baseUrl)
   );
+
+  // CAPTCHA flow — only valid while connection state is 'captcha-required'.
+  // Wire details in `.scratch/recon/captcha-login.md`.
+  ipcMain.handle('projects:submit-captcha', async (_e, code: string) =>
+    submitCaptcha(code)
+  );
+  ipcMain.handle('projects:refresh-captcha', async () => refreshCaptcha());
 }

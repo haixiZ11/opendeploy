@@ -36,8 +36,14 @@ async function writeLine(filePath: string, line: string): Promise<void> {
   const next = tail
     .catch(() => undefined) // never poison the chain on a prior failure
     .then(async () => {
-      await ensureLogDir(filePath);
-      await fs.appendFile(filePath, line + '\n', 'utf-8');
+      try {
+        await ensureLogDir(filePath);
+        await fs.appendFile(filePath, line + '\n', 'utf-8');
+      } catch {
+        // Best-effort log writes — swallow failures (e.g. dir torn down by
+        // test teardown after a fire-and-forget `void logger.info(...)`).
+        // Surfacing them as unhandled rejections would mask real test errors.
+      }
     });
   writeQueues.set(filePath, next);
   return next;

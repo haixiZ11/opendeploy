@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BosRpcCredentials, ErpProvider, Project } from '@shared/erp-types';
 
@@ -124,6 +124,26 @@ export function ProjectForm({ initial, onSubmit, onCancel, submitting }: Project
     });
   };
 
+  // Edit-mode silent refresh: project storage only persists `acctId`, so a
+  // re-opened edit form would otherwise render the dropdown with `id · id`
+  // (the seed below uses the id as the display name). Best-effort hit the
+  // server once on mount to recover number + display name. Failures stay
+  // silent — opening an edit form to change a name shouldn't surface a
+  // network error.
+  useEffect(() => {
+    if (!isEdit) return;
+    const url = initial?.bos?.baseUrl?.trim();
+    if (!url) return;
+    void (async () => {
+      try {
+        const dcs = await window.opendeploy.projectsListDataCenters(url);
+        if (dcs.length > 0) setBosDataCenters(dcs);
+      } catch {
+        // best-effort
+      }
+    })();
+  }, []);
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <Row label={t('projects.product')} required>
@@ -172,7 +192,11 @@ export function ProjectForm({ initial, onSubmit, onCancel, submitting }: Project
               <option value="">{t('projects.bosPickAcctId')}</option>
               {bosDataCenters.map((dc) => (
                 <option key={dc.id} value={dc.id}>
-                  {dc.number ? `${dc.number} · ${dc.name}` : dc.name} · {dc.id}
+                  {dc.number
+                    ? `${dc.number} · ${dc.name} · ${dc.id}`
+                    : dc.name && dc.name !== dc.id
+                      ? `${dc.name} · ${dc.id}`
+                      : dc.id}
                 </option>
               ))}
             </select>

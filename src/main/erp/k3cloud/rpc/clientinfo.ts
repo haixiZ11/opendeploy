@@ -42,9 +42,33 @@ export interface BosClientInfo {
   hostName: string;
   ipAddress: string;
   OperationSystem: string;
+  /**
+   * `Kingdee.BOS.Authentication.ClientType` enum value. Matters at login —
+   * `UserService.isLoginNeedBoundary` (decompiled 2026-05-18) bypasses CAPTCHA
+   * for the "programmatic" client types {Mobile=8, WebApi=32, Speaker=512}.
+   *
+   * We use **WPF=1** (the interactive desktop client BOS Designer sends), NOT
+   * a CAPTCHA-exempt type. Reason (issue #7, 2026-06-05): the K/3 server ties
+   * CAPTCHA-exemption to a complementary request anti-tamper/signature gate
+   * ("FlatShake") — every CAPTCHA-exempt type {8,32,512} has its post-login
+   * business RPCs rejected with "ByRspRetStatusCode N001 Unexpectable request"
+   * because OpenDeploy doesn't sign requests. WPF=1 is exempt from FlatShake;
+   * the trade-off is CAPTCHA, which we now handle via the captcha flow
+   * (`captcha.ts` → `AccountService.GetValidationCodeImageByte`).
+   *
+   * Recon doc: `.scratch/recon/captcha-login.md`.
+   */
+  ClientType: number;
 }
 
 const K3_CLIENT_VERSION_PRETENDED_BY_OPENDEPLOY = '9.0.553.12';
+
+/**
+ * `Kingdee.BOS.Authentication.ClientType.WPF` — the interactive desktop client.
+ * Subject to CAPTCHA (handled via the captcha flow) but EXEMPT from the
+ * FlatShake request anti-tamper gate that blocks the programmatic types.
+ */
+const CLIENT_TYPE_WPF = 1;
 
 function pickPrimaryIPv4(): string {
   const ifaces = os.networkInterfaces();
@@ -90,5 +114,6 @@ export function buildClientInfo(): BosClientInfo {
     hostName: host,
     ipAddress: ip,
     OperationSystem: osStr,
+    ClientType: CLIENT_TYPE_WPF,
   };
 }
