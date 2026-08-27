@@ -97,3 +97,4 @@ __pycache__/
 # Visual Studio 自动生成(bos-bridge 用 csproj,sln 不入库)
 *.sln
 .vs/
+/opendeploy/

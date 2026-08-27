@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppSettings, CustomOpenAISettings, Language, Theme } from '@shared/types';
+import type { AppSettings, Language, Theme } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
 
 interface SettingsState {
@@ -16,7 +16,6 @@ interface SettingsState {
   setModel: (provider: string, modelId: string) => Promise<void>;
   setOllamaModelInput: (value: string) => Promise<void>;
   setLlmRawDump: (on: boolean) => Promise<void>;
-  setCustomOpenAI: (patch: Partial<CustomOpenAISettings>) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -48,15 +47,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setApiKey: async (provider, key) => {
     const current = get().settings;
-    if (provider === 'custom-openai') {
-      const next = {
-        ...current,
-        customOpenAI: { ...(current.customOpenAI ?? {}), apiKey: key }
-      };
-      await window.opendeploy.saveSettings(next);
-      set({ settings: next });
-      return;
-    }
     const apiKeys = { ...(current.apiKeys ?? {}), [provider]: key };
     const next = { ...current, apiKeys };
     await window.opendeploy.saveSettings(next);
@@ -95,15 +85,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setModel: async (provider, modelId) => {
     const current = get().settings;
-    if (provider === 'custom-openai') {
-      const next = {
-        ...current,
-        customOpenAI: { ...(current.customOpenAI ?? {}), model: modelId }
-      };
-      await window.opendeploy.saveSettings(next);
-      set({ settings: next });
-      return;
-    }
     const modelByProvider = { ...(current.modelByProvider ?? {}), [provider]: modelId };
     const next = { ...current, modelByProvider };
     await window.opendeploy.saveSettings(next);
@@ -118,16 +99,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setLlmRawDump: async (on) => {
     const next = { ...get().settings, llmRawDump: on };
-    await window.opendeploy.saveSettings(next);
-    set({ settings: next });
-  },
-
-  setCustomOpenAI: async (patch) => {
-    const current = get().settings;
-    const next = {
-      ...current,
-      customOpenAI: { ...(current.customOpenAI ?? {}), ...patch }
-    };
     await window.opendeploy.saveSettings(next);
     set({ settings: next });
   }

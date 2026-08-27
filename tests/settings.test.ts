@@ -35,22 +35,6 @@ describe('settings', () => {
     expect(loaded).toEqual({ ...DEFAULT_SETTINGS, ...input });
   });
 
-  it('persists and reloads customOpenAI settings', async () => {
-    const input = {
-      language: 'zh-CN' as const,
-      theme: 'system' as const,
-      customOpenAI: {
-        vendorName: 'OpenRouter',
-        apiKey: 'sk-custom',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'openai/gpt-4o-mini'
-      }
-    };
-    await saveSettings(input);
-    const loaded = await loadSettings();
-    expect(loaded.customOpenAI).toEqual(input.customOpenAI);
-  });
-
   it('merges with defaults when file is partial', async () => {
     writeFileSync(
       getSettingsPath(),
