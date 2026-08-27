@@ -219,6 +219,7 @@ export function App() {
               onProjectSelect={(id) => {
                 void useProjectsStore.getState().setActive(id);
               }}
+              onManageProjects={() => setPage('projects')}
               conversations={conversations}
               activeConversationId={chatConversationId ?? undefined}
               onConversationSelect={(id) => {

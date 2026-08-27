@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PageKey } from '@renderer/components/NavRail';
+import { Icons } from '@renderer/components/icons';
 
 /** Minimal project shape used by the secondary rail in MVP-0.1. */
 export interface ProjectSummary {
@@ -45,6 +47,8 @@ export interface SecondarySideProps {
   onNewConversation?: () => void;
   /** Called when the user deletes a conversation. Passed the conversation id. */
   onConversationDelete?: (id: string) => void;
+  /** Navigate to the projects page (quick-switcher "manage" entry). */
+  onManageProjects?: () => void;
 }
 
 /**
@@ -58,8 +62,9 @@ export interface SecondarySideProps {
  * placeholder when empty.
  *
  * Behavior by page:
- *   - `workspace` — projects (top, capped at 4) + conversations (bottom, scrolls).
- *   - `projects`  — full projects list, scrollable.
+ *   - `workspace` — project quick-switcher, projects (top, capped at 4) +
+ *     conversations (bottom, scrolls).
+ *   - `projects`  — project quick-switcher + full projects list, scrollable.
  *   - `settings`  — returns `null` (settings page has its own sub-nav).
  *   - `skills`    — returns `null` (skills page has its own built-in rail).
  *   - `wizard`    — returns `null` (first-run wizard is chromeless).
@@ -73,9 +78,24 @@ export function SecondarySide({
   onProjectSelect,
   onConversationSelect,
   onNewConversation,
-  onConversationDelete
+  onConversationDelete,
+  onManageProjects
 }: SecondarySideProps) {
   const { t } = useTranslation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const switcherRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the switcher dropdown when clicking anywhere outside of it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocMouseDown = (e: MouseEvent): void => {
+      if (switcherRef.current && !switcherRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [menuOpen]);
 
   // Skills, wizard, and settings hide the secondary rail entirely.
   // Settings has its own sub-nav, so the global rail would be redundant.
@@ -83,13 +103,20 @@ export function SecondarySide({
     return null;
   }
 
+  const activeProject = activeProjectId
+    ? projects.find((p) => p.id === activeProjectId)
+    : undefined;
+
   const renderProjectItem = (p: ProjectSummary) => {
     const dotState = p.state === 'live' ? 'live' : p.state === 'conn' ? 'conn' : '';
     return (
       <div
         key={p.id}
         className={`proj-item ${p.id === activeProjectId ? 'active' : ''}`}
-        onClick={() => onProjectSelect?.(p.id)}
+        onClick={() => {
+          onProjectSelect?.(p.id);
+          setMenuOpen(false);
+        }}
       >
         <span className={`proj-dot ${dotState}`} />
         <div className="proj-info">
@@ -102,6 +129,57 @@ export function SecondarySide({
       </div>
     );
   };
+
+  // Quick switcher pinned above the sections on both workspace & projects:
+  // the always-visible answer to "which K3 Cloud environment am I driving".
+  const activeDot =
+    activeProject?.state === 'live' ? 'live' : activeProject?.state === 'conn' ? 'conn' : '';
+  const projectSwitcher = (
+    <div className="proj-switch-wrap" ref={switcherRef}>
+      <button
+        type="button"
+        className={`proj-switch ${menuOpen ? 'open' : ''}`}
+        onClick={() => setMenuOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={menuOpen}
+      >
+        <span className={`sdot ${activeDot}`} />
+        <span className="proj-switch-info">
+          <span className="proj-switch-cap">{t('side.currentProject')}</span>
+          <span className={`proj-switch-name ${activeProject ? '' : 'empty'}`}>
+            {activeProject ? activeProject.name : t('side.noActiveProject')}
+          </span>
+        </span>
+        <span className="proj-switch-caret">▾</span>
+      </button>
+      {menuOpen && (
+        <div className="proj-switch-menu" role="listbox">
+          <div className="proj-switch-menu-list">
+            {projects.length === 0 ? (
+              <div className="muted small" style={{ padding: '8px 10px' }}>
+                {t('side.noProjectsList')}
+              </div>
+            ) : (
+              projects.map(renderProjectItem)
+            )}
+          </div>
+          {onManageProjects && (
+            <button
+              type="button"
+              className="proj-switch-manage"
+              onClick={() => {
+                setMenuOpen(false);
+                onManageProjects();
+              }}
+            >
+              {Icons.gear}
+              {t('side.manageProjects')}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   const emptyProjects = (
     <div className="muted small" style={{ padding: '12px 14px' }}>
@@ -122,6 +200,7 @@ export function SecondarySide({
           <h2>{t('nav.projects')}</h2>
           <span className="sub">{projects.length}</span>
         </div>
+        {projectSwitcher}
         <div className="side-sec" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <div className="side-label">{t('nav.projects')}</div>
           {projects.length === 0 ? emptyProjects : projects.map(renderProjectItem)}
@@ -137,6 +216,7 @@ export function SecondarySide({
       <div className="side-head">
         <h2>{t('nav.workspace')}</h2>
       </div>
+      {projectSwitcher}
       <div className="side-sec">
         <div className="side-label">
           <span>{t('nav.projects')}</span>
