@@ -18,9 +18,12 @@ function normalizeOpenAiBaseUrl(baseUrl: string): string {
     .replace(/\/models$/i, '');
 }
 
-function buildOpenAiEndpoint(baseUrl: string, path: '/chat/completions' | '/models'): string {
+/** OpenAI 兼容端点拼装 — chat/models/test-connection 共用,已导出。 */
+export function buildOpenAiEndpoint(baseUrl: string, path: '/chat/completions' | '/models'): string {
   const normalized = normalizeOpenAiBaseUrl(baseUrl);
-  if (/\/v1$/i.test(normalized)) {
+  // 已经带版本段 (/v1 /v3 /v4…) 的根就是完整端点 — 再拼 /v1 会把智谱
+  // (/api/paas/v4) 和豆包 (/api/v3) 打成 404。只有裸域名才补 /v1。
+  if (/\/v\d+$/i.test(normalized)) {
     return `${normalized}${path}`;
   }
   return `${normalized}/v1${path}`;

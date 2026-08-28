@@ -367,6 +367,22 @@ describe('OpenAI-compatible client', () => {
     expect(models).toEqual(['gpt-4o-mini']);
   });
 
+  it('keeps non-v1 versioned roots intact (GLM /v4, doubao /api/v3)', async () => {
+    // 回归锁:旧逻辑对所有非 /v1 结尾的根强拼 /v1,把智谱
+    // /api/paas/v4 打成 /api/paas/v4/v1/... → 404。
+    const urls: string[] = [];
+    const fetch = vi.fn(async (url: string) => {
+      urls.push(url);
+      return Response.json({ data: [{ id: 'm' }] });
+    });
+    await listOpenAiModels({ baseUrl: 'https://open.bigmodel.cn/api/paas/v4', apiKey: 'k', fetchImpl: fetch });
+    await listOpenAiModels({ baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', apiKey: 'k', fetchImpl: fetch });
+    expect(urls).toEqual([
+      'https://open.bigmodel.cn/api/paas/v4/models',
+      'https://ark.cn-beijing.volces.com/api/v3/models'
+    ]);
+  });
+
   it('appends /v1 by default when user enters provider root URL', async () => {
     const fetch = vi.fn(async (url: string) => {
       expect(url).toBe('https://example.com/v1/models');

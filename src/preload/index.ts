@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppSettings, IpcApi, LlmChatRequest, LlmStreamEvent } from '@shared/types';
+import type { AppSettings, IpcApi, LlmChatRequest, LlmProviderProbeRequest, LlmStreamEvent } from '@shared/types';
 import type { KnowledgeSource } from '@shared/skill-types';
 import type { ErpConnectionState, Project } from '@shared/erp-types';
 
@@ -19,6 +19,8 @@ const api: IpcApi = {
   },
   llmSendMessage: (req: LlmChatRequest) => ipcRenderer.invoke('llm:send', req),
   llmAbort: (requestId: string) => ipcRenderer.invoke('llm:abort', requestId),
+  llmListModels: (req: LlmProviderProbeRequest) => ipcRenderer.invoke('llm:listModels', req),
+  llmTestConnection: (req: LlmProviderProbeRequest) => ipcRenderer.invoke('llm:testConnection', req),
   llmOnStream: (cb: (ev: LlmStreamEvent) => void) => {
     const listener = (_event: unknown, ev: LlmStreamEvent) => cb(ev);
     ipcRenderer.on('llm:stream', listener);
