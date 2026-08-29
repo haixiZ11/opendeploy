@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createOpenAiClient } from '../../src/main/llm/openai-client';
+import { createOpenAiClient, listOpenAiModels } from '../../src/main/llm/openai-client';
 import type { ChatRequest } from '../../src/shared/llm-types';
 
 // Minimal fetch mock returning streaming SSE
