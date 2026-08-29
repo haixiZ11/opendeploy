@@ -128,6 +128,43 @@ describe('OpenAI-compatible client', () => {
     expect(events.find((e: any) => e.type === 'usage')).toBeUndefined();
   });
 
+  it('replays assistant toolCalls as tool_calls in multi-turn requests (agent loop round 2)', async () => {
+    // 回归锁:多轮工具对话的第二轮请求,assistant 历史必须带回 tool_calls、
+    // tool 消息必须带 tool_call_id,DeepSeek/Qwen/GLM 等 OpenAI 兼容协议才认。
+    let capturedBody: unknown = null;
+    const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+      capturedBody = JSON.parse(String(init.body));
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        pull(c) { c.enqueue(encoder.encode('data: [DONE]\n\n')); c.close(); }
+      });
+      return new Response(stream, { status: 200 });
+    });
+    const client = createOpenAiClient({ baseUrl: 'https://x', defaultModel: 'm', fetchImpl: fetch });
+    const req: ChatRequest = {
+      providerId: 't', apiKey: 'k',
+      messages: [
+        { id: 'u', role: 'user', content: 'hi', createdAt: '' },
+        {
+          id: 'a',
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'c1', name: 'get_time', arguments: { tz: 'UTC' } }],
+          createdAt: ''
+        },
+        { id: 't1', role: 'tool', toolCallId: 'c1', content: '12:00', createdAt: '' }
+      ]
+    };
+    for await (const _ of client.stream(req)) { /* drain */ }
+    const body = capturedBody as { messages: Array<Record<string, unknown>> };
+    const assistantMsg = body.messages.find((m) => m.role === 'assistant');
+    expect(assistantMsg?.tool_calls).toEqual([
+      { id: 'c1', type: 'function', function: { name: 'get_time', arguments: '{"tz":"UTC"}' } }
+    ]);
+    const toolMsg = body.messages.find((m) => m.role === 'tool');
+    expect(toolMsg?.tool_call_id).toBe('c1');
+  });
+
   it('falls back to done-without-usage when provider does not honor stream_options.include_usage', async () => {
     // 如果某 OpenAI 兼容 provider 忽略 stream_options,流就只有 finish_reason chunk + [DONE],
     // 没 usage chunk。post-loop fallback 必须仍然发 done 让 agent loop 终止。
@@ -295,5 +332,67 @@ describe('OpenAI-compatible client', () => {
     )) events.push(e);
     expect(events.some((e) => (e as { type: string }).type === 'error')).toBe(true);
     expect(closed).toBe(true);
+  });
+
+  it('lists models from OpenAI-compatible /models endpoint', async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('https://example.com/v1/models');
+      expect(init?.headers).toEqual({ Authorization: 'Bearer sk-custom' });
+      return Response.json({
+        data: [
+          { id: 'gpt-4o-mini' },
+          { id: 'deepseek-chat' },
+          { id: 'gpt-4o-mini' }
+        ]
+      });
+    });
+    const models = await listOpenAiModels({
+      baseUrl: 'https://example.com/v1/',
+      apiKey: 'sk-custom',
+      fetchImpl: fetch
+    });
+    expect(models).toEqual(['gpt-4o-mini', 'deepseek-chat']);
+  });
+
+  it('normalizes base URL when user pastes /chat/completions endpoint', async () => {
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toBe('https://example.com/v1/models');
+      return Response.json({ data: [{ id: 'gpt-4o-mini' }] });
+    });
+    const models = await listOpenAiModels({
+      baseUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'sk-custom',
+      fetchImpl: fetch
+    });
+    expect(models).toEqual(['gpt-4o-mini']);
+  });
+
+  it('keeps non-v1 versioned roots intact (GLM /v4, doubao /api/v3)', async () => {
+    // 回归锁:旧逻辑对所有非 /v1 结尾的根强拼 /v1,把智谱
+    // /api/paas/v4 打成 /api/paas/v4/v1/... → 404。
+    const urls: string[] = [];
+    const fetch = vi.fn(async (url: string) => {
+      urls.push(url);
+      return Response.json({ data: [{ id: 'm' }] });
+    });
+    await listOpenAiModels({ baseUrl: 'https://open.bigmodel.cn/api/paas/v4', apiKey: 'k', fetchImpl: fetch });
+    await listOpenAiModels({ baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', apiKey: 'k', fetchImpl: fetch });
+    expect(urls).toEqual([
+      'https://open.bigmodel.cn/api/paas/v4/models',
+      'https://ark.cn-beijing.volces.com/api/v3/models'
+    ]);
+  });
+
+  it('appends /v1 by default when user enters provider root URL', async () => {
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toBe('https://example.com/v1/models');
+      return Response.json({ data: [{ id: 'gpt-4o-mini' }] });
+    });
+    const models = await listOpenAiModels({
+      baseUrl: 'https://example.com',
+      apiKey: 'sk-custom',
+      fetchImpl: fetch
+    });
+    expect(models).toEqual(['gpt-4o-mini']);
   });
 });

@@ -10,6 +10,22 @@ interface OpenAiClientOpts {
   fetchImpl?: typeof fetch;
 }
 
+function normalizeOpenAiBaseUrl(baseUrl: string): string {
+  return baseUrl
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/chat\/completions$/i, '')
+    .replace(/\/models$/i, '');
+}
+
+function buildOpenAiEndpoint(baseUrl: string, path: '/chat/completions' | '/models'): string {
+  const normalized = normalizeOpenAiBaseUrl(baseUrl);
+  if (/\/v1$/i.test(normalized)) {
+    return `${normalized}${path}`;
+  }
+  return `${normalized}/v1${path}`;
+}
+
 export function createOpenAiClient(opts: OpenAiClientOpts): LlmClient {
   const fetchImpl = opts.fetchImpl ?? fetch;
 

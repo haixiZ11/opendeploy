@@ -16,7 +16,7 @@ build/
 *.swp
 *.swo
 .claude/
-
+.workbuddy/
 # OS
 .DS_Store
 Thumbs.db

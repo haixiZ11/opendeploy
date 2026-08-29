@@ -16,6 +16,14 @@ interface SettingsState {
   setModel: (provider: string, modelId: string) => Promise<void>;
   setOllamaModelInput: (value: string) => Promise<void>;
   setLlmRawDump: (on: boolean) => Promise<void>;
+<<<<<<< HEAD
+=======
+  setCustomOpenAI: (patch: Partial<CustomOpenAISettings>) => Promise<void>;
+  /** 标记向导已走过(完成或跳过) — App 的首启检测据此不再拉人进向导。 */
+  completeOnboarding: () => Promise<void>;
+  /** 缓存从 /models|/api/tags 拉到的模型 id,供下拉合并展示。 */
+  setFetchedModels: (providerId: string, ids: string[]) => Promise<void>;
+>>>>>>> bace5f85dc7ae393f5796122a1a394e6300334c7
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -99,6 +107,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setLlmRawDump: async (on) => {
     const next = { ...get().settings, llmRawDump: on };
+    await window.opendeploy.saveSettings(next);
+    set({ settings: next });
+  },
+
+  setCustomOpenAI: async (patch) => {
+    const current = get().settings;
+    const next = {
+      ...current,
+      customOpenAI: { ...(current.customOpenAI ?? {}), ...patch }
+    };
     await window.opendeploy.saveSettings(next);
     set({ settings: next });
   }
