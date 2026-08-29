@@ -16,6 +16,8 @@ build/
 *.swp
 *.swo
 .claude/
+.zcode/
+..workbuddy
 .workbuddy/
 # OS
 .DS_Store
