@@ -36,6 +36,9 @@
     "stopHint": "中断当前回答"
   },
   "side": {
+    "currentProject": "当前项目",
+    "noActiveProject": "未激活项目",
+    "manageProjects": "管理项目…",
     "conversations": "最近对话",
     "noProjectsWorkspace": "还没有项目。去「项目」页新建。",
     "noProjectsList": "还没有项目。点击右上角「新建项目」。",
