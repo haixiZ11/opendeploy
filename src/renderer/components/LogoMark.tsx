@@ -12,13 +12,13 @@ export interface LogoMarkProps {
 /**
  * LogoMark — the 开达 / OpenDeploy brand mark.
  *
- * Design: gourd (葫芦) silhouette in Claude terracotta `#D97757` with a Claude-style
+ * Design: gourd (葫芦) silhouette in the app-blue accent `#1670D1` with a Claude-style
  * 4-point sparkle cut out of the lower bulb — "宝葫芦里装着 AI 工具"。
  * Source of truth SVG lives at `resources/icon.svg`.
  */
 export function LogoMark({ size, variant = 'default', label }: LogoMarkProps): ReactElement {
   const stem = variant === 'inverse' ? '#fafaf7' : '#141414';
-  const body = '#D97757';
+  const body = '#1670D1';
   return (
     <svg
       width={size}

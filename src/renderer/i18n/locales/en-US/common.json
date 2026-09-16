@@ -36,6 +36,9 @@
     "stopHint": "Interrupt the current reply"
   },
   "side": {
+    "currentProject": "Current project",
+    "noActiveProject": "No active project",
+    "manageProjects": "Manage projects…",
     "conversations": "Recent conversations",
     "noProjectsWorkspace": "No projects yet. Head to the Projects tab to create one.",
     "noProjectsList": "No projects yet. Click \"New project\" at the top right.",
