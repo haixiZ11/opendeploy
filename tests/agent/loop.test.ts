@@ -223,9 +223,20 @@ describe('runAgentLoop error logging', () => {
     process.env.OPENDEPLOY_HOME = tmp;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (prevHome === undefined) delete process.env.OPENDEPLOY_HOME;
     else process.env.OPENDEPLOY_HOME = prevHome;
+    // Fire-and-forget trace writes (void writeTurnTrace → fs.appendFile) may
+    // still hold file handles open — Windows refuses to delete open files
+    // (EPERM). Retry briefly so teardown doesn't flake.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        rmSync(tmp, { recursive: true, force: true });
+        return;
+      } catch {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    }
     rmSync(tmp, { recursive: true, force: true });
   });
 
@@ -293,9 +304,20 @@ describe('runAgentLoop trace (Plan 5.13)', () => {
     process.env.OPENDEPLOY_HOME = tmp;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (prevHome === undefined) delete process.env.OPENDEPLOY_HOME;
     else process.env.OPENDEPLOY_HOME = prevHome;
+    // Fire-and-forget trace writes (void writeTurnTrace → fs.appendFile) may
+    // still hold file handles open — Windows refuses to delete open files
+    // (EPERM). Retry briefly so teardown doesn't flake.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        rmSync(tmp, { recursive: true, force: true });
+        return;
+      } catch {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    }
     rmSync(tmp, { recursive: true, force: true });
   });
 

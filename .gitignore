@@ -7,7 +7,7 @@ dist/
 out/
 build/
 *.asar
-
+.workbuddy/
 # IDE
 .vscode/*
 !.vscode/settings.json
@@ -97,3 +97,7 @@ __pycache__/
 # Visual Studio 自动生成(bos-bridge 用 csproj,sln 不入库)
 *.sln
 .vs/
+
+# 仓库目录意外嵌套克隆(如 opendeploy/opendeploy 这类含独立 .git 的旧副本)
+# 不加这条的话 git add . 会把它当 gitlink 提交进去,变成半成品 submodule
+opendeploy/
